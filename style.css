@@ -146,7 +146,7 @@
 }
 
 /* ============================================================================
-   MAIN CONTENT AREA - FIXED
+   MAIN CONTENT AREA
    ============================================================================ */
 
 .character_tools_main_content {
@@ -164,23 +164,12 @@
   gap: 10px;
   min-width: 0;
   min-height: 0;
-  flex: 1 1 0; /* ADD: Fill available space on mobile */
-  overflow: hidden;
-}
-
-.character_tools_right_column {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ct-gap);
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 0;
   overflow: hidden;
 }
 
 #character_tools_character_section,
 #character_tools_pipeline_section {
-  flex: 0 0 auto; /* CHANGE: explicit auto basis */
+  flex-shrink: 0;
 }
 
 #character_tools_stage_section {
@@ -197,12 +186,14 @@
   overflow-y: auto;
 }
 
-.character_tools_section_grow {
-  flex: 1 1 0;
-  min-height: 0; /* CHANGE: was 200px, blocking proper flex */
-  overflow: hidden;
+.character_tools_right_column {
   display: flex;
   flex-direction: column;
+  gap: var(--ct-gap);
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  overflow: hidden;
 }
 
 #character_tools_results_container {
@@ -2069,11 +2060,12 @@
   .character_tools_left_column {
     flex: 0 0 38%;
     max-width: 500px;
-    /* height: 100% not needed - flex handles it */
+    height: 100%;
+    max-height: 100%;
   }
 
   .character_tools_right_column {
-    flex: 1 1 0;
+    flex: 1;
     min-width: 350px;
   }
 
