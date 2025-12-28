@@ -172,25 +172,61 @@ export function getSettings(): Settings {
 }
 
 /**
- * Ensure all builtin presets exist in settings
+ * Ensure all builtin presets exist and are up-to-date in settings.
+ * Updates existing builtins if their version is older than current.
+ * Never touches user-created presets (isBuiltin === false).
  */
 function ensureBuiltinPresets(settings: Settings): boolean {
     let modified = false;
 
-    const existingPromptIds = new Set(settings.promptPresets.map(p => p.id));
+    // Update or add builtin prompt presets
     for (const builtin of BUILTIN_PROMPT_PRESETS) {
-        if (!existingPromptIds.has(builtin.id)) {
+        const existingIndex = settings.promptPresets.findIndex(p => p.id === builtin.id);
+
+        if (existingIndex === -1) {
+            // New preset - add it
             settings.promptPresets.push(structuredClone(builtin));
             modified = true;
+            debugLog('info', 'Added new builtin prompt preset', { id: builtin.id });
+        } else if (settings.promptPresets[existingIndex].isBuiltin) {
+            // Existing builtin - check version and update if newer
+            const existing = settings.promptPresets[existingIndex];
+            if ((existing.presetVersion ?? 0) < builtin.presetVersion) {
+                settings.promptPresets[existingIndex] = structuredClone(builtin);
+                modified = true;
+                debugLog('info', 'Updated builtin prompt preset', {
+                    id: builtin.id,
+                    oldVersion: existing.presetVersion ?? 0,
+                    newVersion: builtin.presetVersion,
+                });
+            }
         }
+        // If it exists but isBuiltin is false, user converted it to custom - don't touch
     }
 
-    const existingSchemaIds = new Set(settings.schemaPresets.map(p => p.id));
+    // Update or add builtin schema presets
     for (const builtin of BUILTIN_SCHEMA_PRESETS) {
-        if (!existingSchemaIds.has(builtin.id)) {
+        const existingIndex = settings.schemaPresets.findIndex(p => p.id === builtin.id);
+
+        if (existingIndex === -1) {
+            // New preset - add it
             settings.schemaPresets.push(structuredClone(builtin));
             modified = true;
+            debugLog('info', 'Added new builtin schema preset', { id: builtin.id });
+        } else if (settings.schemaPresets[existingIndex].isBuiltin) {
+            // Existing builtin - check version and update if newer
+            const existing = settings.schemaPresets[existingIndex];
+            if ((existing.presetVersion ?? 0) < builtin.presetVersion) {
+                settings.schemaPresets[existingIndex] = structuredClone(builtin);
+                modified = true;
+                debugLog('info', 'Updated builtin schema preset', {
+                    id: builtin.id,
+                    oldVersion: existing.presetVersion ?? 0,
+                    newVersion: builtin.presetVersion,
+                });
+            }
         }
+        // If it exists but isBuiltin is false, user converted it to custom - don't touch
     }
 
     return modified;

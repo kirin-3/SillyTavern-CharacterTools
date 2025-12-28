@@ -388,3 +388,35 @@ export interface ResultsPanelProps {
     nextStage: StageName | null;
     canContinue: boolean;
 }
+
+// ============================================================================
+// SESSION PERSISTENCE
+// ============================================================================
+
+export interface PersistedSession {
+  id: string;
+  label: string;
+  createdAt: number;
+  updatedAt: number;
+
+  // Serialized pipeline state
+  results: {
+    score: StageResult | null;
+    rewrite: StageResult | null;
+    analyze: StageResult | null;
+  };
+  configs: Record<StageName, StageConfig>;
+  selectedStages: StageName[];
+  stageStatus: Record<StageName, StageStatus>;
+  iterationCount: number;
+  iterationHistory: IterationSnapshot[];
+  selectedFields: FieldSelection;
+}
+
+export interface CharacterSessionData {
+  version: number;
+  characterName: string;
+  characterAvatar: string;
+  sessions: PersistedSession[];
+  activeSessionId: string | null;
+}

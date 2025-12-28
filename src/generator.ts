@@ -738,6 +738,5 @@ function substituteCharacterPlaceholders(
     userName: string,
 ): string {
     return text
-        .replace(/\{\{char\}\}/gi, charName)
-        .replace(/\{\{user\}\}/gi, userName);
+        .replace(/\{\{char\}\}/gi, charName);
 }

@@ -5,10 +5,10 @@ import { MODULE_NAME } from '../../../constants';
 import { debugLog } from '../../../debug';
 import { getPopulatedFields } from '../../../character';
 import { setCharacter, updateFieldSelection, selectAllFields, deselectAllFields } from '../../../pipeline';
-import { loadIterationHistory } from '../../../persistence';
+import { loadCharacterSessions, restorePipelineFromSession } from '../../../persistence';
 import { renderDropdownItems, updateFieldTokenCounts } from '../../components/character-select';
 import { getState, getElement, addCleanupFunction } from '../state';
-import { updateAllComponents, updateCharacterSelect, updateTokenEstimate, updateIterationHistory } from '../updaters';
+import { updateAllComponents, updateCharacterSelect, updateTokenEstimate } from '../updaters';
 import type { Character } from '../../../types';
 
 let characterSelectInitialized = false;
@@ -142,7 +142,7 @@ export function initCharacterSelectListeners(): void {
 
         if (target.closest(`#${MODULE_NAME}_char_clear`)) {
             s.pipeline = setCharacter(s.pipeline, null, null);
-            s.historyLoaded = false;
+            s.sessionsLoaded = false;
             updateAllComponents();
             return;
         }
@@ -267,38 +267,54 @@ export async function selectCharacter(char: Character, index: number): Promise<v
         toastr.warning(`${fullChar.name} has no content to analyze`);
     }
 
+    // Set character first
     s.pipeline = setCharacter(s.pipeline, fullChar, index);
-    s.historyLoaded = false;
+    s.sessionsLoaded = false;
+    s.sessions = [];
+    s.activeSessionId = null;
 
     updateAllComponents();
 
-    loadIterationHistory(fullChar).then(history => {
+    // Load sessions for this character
+    loadCharacterSessions(fullChar).then(async data => {
         const currentState = getState();
         if (!currentState || currentState.pipeline.characterIndex !== selectedIndex) {
-            debugLog('info', 'Character changed during history load, discarding', null);
+            debugLog('info', 'Character changed during session load, discarding', null);
             return;
         }
 
-        if (history && history.length > 0) {
-            currentState.pipeline = {
-                ...currentState.pipeline,
-                iterationHistory: history,
-                iterationCount: history.length,
-            };
-            debugLog('info', 'Loaded iteration history', { count: history.length });
+        currentState.sessions = data.sessions;
+        currentState.activeSessionId = data.activeSessionId;
+        currentState.sessionsLoaded = true;
+
+        // If there's an active session, restore it
+        if (data.activeSessionId && data.sessions.length > 0) {
+            const activeSession = data.sessions.find(s => s.id === data.activeSessionId);
+            if (activeSession) {
+                currentState.pipeline = restorePipelineFromSession(
+                    activeSession,
+                    fullChar,
+                    selectedIndex,
+                );
+                debugLog('info', 'Restored active session', {
+                    sessionId: data.activeSessionId,
+                    label: activeSession.label,
+                });
+                toastr.info(`Restored: ${activeSession.label}`);
+            }
         }
 
-        currentState.historyLoaded = true;
-        updateIterationHistory();
+        updateAllComponents();
     }).catch(e => {
-        debugLog('error', 'Failed to load iteration history', e);
+        debugLog('error', 'Failed to load sessions', e);
         const currentState = getState();
         if (currentState) {
-            currentState.historyLoaded = true;
-            updateIterationHistory();
+            currentState.sessionsLoaded = true;
+            updateAllComponents();
         }
     });
 
+    // Update token counts
     setTimeout(async () => {
         const currentEl = getElement();
         const currentState = getState();

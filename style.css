@@ -1999,6 +1999,205 @@
   font-size: 0.9em;
 }
 
+.character_tools_char_loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    color: var(--SmartThemeBodyColor);
+    font-size: 0.9em;
+}
+
+.character_tools_char_loading i {
+    color: var(--SmartThemeQuoteColor);
+}
+
+/* ============================================================================
+   SESSION MANAGER
+   ============================================================================ */
+
+.character_tools_session_manager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-gap-sm);
+}
+
+.character_tools_session_header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--ct-gap-sm);
+}
+
+.character_tools_session_title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  font-size: 0.85em;
+}
+
+.character_tools_session_header_actions {
+  display: flex;
+  gap: var(--ct-gap-xs);
+}
+
+.character_tools_unsaved_indicator {
+  color: var(--ct-warning);
+  font-size: 0.8em;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.character_tools_session_list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 150px;
+  overflow-y: auto;
+  background: var(--SmartThemeChatTintColor);
+  border: 1px solid var(--SmartThemeBorderColor);
+  border-radius: var(--ct-radius-sm);
+}
+
+.character_tools_session_empty,
+.character_tools_session_loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ct-gap-sm);
+  padding: var(--ct-gap);
+  text-align: center;
+  opacity: 0.6;
+  font-size: 0.85em;
+}
+
+.character_tools_session_item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--SmartThemeBorderColor);
+  transition: background var(--ct-transition);
+}
+
+.character_tools_session_item:last-child {
+  border-bottom: none;
+}
+
+.character_tools_session_item:hover {
+  background: var(--SmartThemeBlurTintColor);
+}
+
+.character_tools_session_item.active {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
+  border-left: 3px solid var(--SmartThemeQuoteColor);
+  padding-left: 5px;
+}
+
+.character_tools_session_item_main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--ct-gap-sm);
+}
+
+.character_tools_session_item_info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.character_tools_session_label {
+  font-weight: 500;
+  font-size: 0.85em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.character_tools_session_meta {
+  font-size: 0.7em;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.character_tools_session_item_actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.character_tools_session_item_actions .character_tools_icon_btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  font-size: 0.75em;
+}
+
+.character_tools_session_active_badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: var(--ct-radius-sm);
+  font-size: 0.65em;
+  font-weight: 600;
+  background: var(--SmartThemeQuoteColor);
+  color: var(--SmartThemeBlurTintColor);
+  text-transform: uppercase;
+}
+
+.character_tools_session_preview {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-gap-sm);
+  padding-left: 4px;
+}
+
+.character_tools_session_stages {
+  display: flex;
+  gap: 6px;
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+
+.character_tools_session_stages i {
+  width: 14px;
+  text-align: center;
+}
+
+.character_tools_session_footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--ct-gap-xs);
+  border-top: 1px solid var(--SmartThemeBorderColor);
+}
+
+.character_tools_session_footer .menu_button {
+  font-size: 0.75em;
+  padding: 4px 8px;
+  opacity: 0.7;
+}
+
+.character_tools_session_footer .menu_button:hover {
+  opacity: 1;
+}
+
+/* Session section visibility */
+#character_tools_session_section.hidden {
+  display: none;
+}
+
 /* ============================================================================
    UTILITIES
    ============================================================================ */
@@ -2205,18 +2404,4 @@
     outline: 2px solid currentColor;
     outline-offset: 2px;
   }
-}
-
-.character_tools_char_loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 20px;
-    color: var(--SmartThemeBodyColor);
-    font-size: 0.9em;
-}
-
-.character_tools_char_loading i {
-    color: var(--SmartThemeQuoteColor);
 }

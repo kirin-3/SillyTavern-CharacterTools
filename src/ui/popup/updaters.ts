@@ -9,10 +9,12 @@ import { updatePipelineNavState } from '../components/pipeline-nav';
 import { updateStageConfigState } from '../components/stage-config';
 import { updateResultsPanelState } from '../components/results-panel';
 import { updateIterationHistoryState } from '../components/iteration-history';
+import { renderSessionManager, updateSessionManagerState } from '../components/session-manager';
 import { getState, getElement } from './state';
 
 export function updateAllComponents(): void {
     updateCharacterSelect();
+    updateSessionManager();
     updatePipelineNav();
     updateStageSection();
     updateResultsPanel();
@@ -201,4 +203,49 @@ export async function updateTokenEstimate(): Promise<void> {
 
     tokenEl.innerHTML = `<i class="fa-solid fa-microchip"></i> ${counts.promptTokens.toLocaleString()}t (${counts.percentage}%)`;
     tokenEl.className = `${MODULE_NAME}_token_estimate ${colorClass}`;
+}
+
+export function updateSessionManager(): void {
+    const el = getElement();
+    const state = getState();
+    if (!el || !state) return;
+
+    const container = el.querySelector(`#${MODULE_NAME}_session_section`);
+    if (!container) return;
+
+    // Only show if character is selected
+    if (!state.pipeline.character) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+
+    const managerContainer = container.querySelector(`#${MODULE_NAME}_session_manager_container`);
+    if (managerContainer) {
+        if (!state.sessionsLoaded) {
+            managerContainer.innerHTML = `
+                <div class="${MODULE_NAME}_session_loading">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Loading sessions...</span>
+                </div>
+            `;
+        } else {
+            const existingManager = managerContainer.querySelector(`#${MODULE_NAME}_session_manager`);
+            if (existingManager) {
+                updateSessionManagerState(
+                    managerContainer as HTMLElement,
+                    state.sessions,
+                    state.activeSessionId,
+                    state.hasUnsavedChanges,
+                );
+            } else {
+                managerContainer.innerHTML = renderSessionManager(
+                    state.sessions,
+                    state.activeSessionId,
+                    state.hasUnsavedChanges,
+                );
+            }
+        }
+    }
 }

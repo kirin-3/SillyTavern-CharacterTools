@@ -16,7 +16,7 @@ import {
     startRefinement,
     completeRefinement,
 } from '../../pipeline';
-import { saveIterationHistory } from '../../persistence';
+import { scheduleAutoSave } from './handlers/session';
 import { getState, getElement } from './state';
 import { updateAllComponents, updateStageSection, updatePipelineNav, updateResultsPanel, updateIterationIndicator, updateIterationHistory } from './updaters';
 import { renderRefinementLoading } from '../components/results-panel';
@@ -68,6 +68,7 @@ export async function runSingleStage(stage: StageName): Promise<void> {
                 schemaUsed,
             });
             toastr.success(`${STAGE_LABELS[stage]} complete`);
+            scheduleAutoSave();  // ADD THIS LINE
         } else {
             s.pipeline = failStage(s.pipeline, stage, result.error);
             if (result.error !== 'Generation cancelled') {
@@ -225,10 +226,7 @@ export async function runRefinement(): Promise<void> {
             });
 
             toastr.success(`Refinement #${s.pipeline.iterationCount} complete`);
-
-            if (s.pipeline.character) {
-                await saveIterationHistory(s.pipeline.character, s.pipeline.iterationHistory);
-            }
+            scheduleAutoSave();
 
             s.activeStageView = 'rewrite';
         } else {

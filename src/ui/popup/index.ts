@@ -5,25 +5,25 @@ import { MODULE_NAME, STAGES } from '../../constants';
 import { debugLog, logError } from '../../debug';
 import { getPromptPreset, getSchemaPreset } from '../../settings';
 import { updateStageConfig as pipelineUpdateStageConfig } from '../../pipeline';
-import { clearIterationHistory } from '../../persistence';
-import { renderCharacterSelect } from '../components/character-select';
-import { renderPipelineNav } from '../components/pipeline-nav';
-import { renderStageConfig, clearSchemaValidationCache } from '../components/stage-config';
-import { renderResultsPanel } from '../components/results-panel';
-import { renderIterationHistory } from '../components/iteration-history';
-import { openSettingsModal } from '../settings-modal';
-
+import { clearSchemaValidationCache } from '../components/stage-config';
 import { getState, getElement, setState, setElement, createInitialState } from './state';
-import { subscribeEvents, initGlobalListeners, cleanup } from './lifecycle';
 import { buildPopupContent } from './html';
 import { updateAllComponents } from './updaters';
-import { runSingleStage } from './generation';
+import { subscribeEvents, initGlobalListeners, cleanup } from './lifecycle';
 import { initCharacterSelectListeners, resetCharacterSelectInit } from './handlers/character';
 import { initPipelineNavListeners } from './handlers/pipeline';
 import { initStageConfigListeners } from './handlers/stage-config';
 import { initResultsPanelListeners } from './handlers/results';
 import { initIterationHistoryListeners } from './handlers/iteration';
-
+import { initSessionManagerListeners, forceSave, cancelAutoSave } from './handlers/session';
+import { runSingleStage } from './generation';
+import { renderCharacterSelect } from '../components/character-select';
+import { renderPipelineNav } from '../components/pipeline-nav';
+import { renderStageConfig } from '../components/stage-config';
+import { renderResultsPanel } from '../components/results-panel';
+import { renderIterationHistory } from '../components/iteration-history';
+import { renderSessionManager } from '../components/session-manager';
+import { openSettingsModal } from '../settings-modal';
 import type { Character } from '../../types';
 
 export async function openMainPopup(): Promise<void> {
@@ -58,12 +58,9 @@ export async function openMainPopup(): Promise<void> {
             state.abortController.abort();
         }
 
-        if (state?.pipeline.character) {
-            await clearIterationHistory(state.pipeline.character);
-            debugLog('info', 'Iteration history cleared on popup close', {
-                character: state.pipeline.character.name,
-            });
-        }
+        // Save session on close
+        await forceSave();
+        cancelAutoSave();
 
         cleanup();
         clearSchemaValidationCache();
@@ -115,6 +112,17 @@ function initComponents(characters: Character[]): void {
             state.pipeline.selectedFields,
         );
         initCharacterSelectListeners();
+    }
+
+    // Session manager
+    const sessionContainer = el.querySelector(`#${MODULE_NAME}_session_manager_container`);
+    if (sessionContainer) {
+        sessionContainer.innerHTML = renderSessionManager(
+            state.sessions,
+            state.activeSessionId,
+            state.hasUnsavedChanges,
+        );
+        initSessionManagerListeners();
     }
 
     // Pipeline nav

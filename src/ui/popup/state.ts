@@ -2,7 +2,7 @@
 // Centralized state management for the popup
 
 import { createPipelineState } from '../../pipeline';
-import type { PipelineState, StageName } from '../../types';
+import type { PipelineState, StageName, PersistedSession } from '../../types';
 
 // Proper type for lodash debounced functions
 interface DebouncedFunction {
@@ -17,7 +17,18 @@ export interface PopupState {
     isRefining: boolean;
     abortController: AbortController | null;
     activeStageView: StageName;
+
+    // Session management
+    activeSessionId: string | null;
+    sessions: PersistedSession[];
+    sessionsLoaded: boolean;
+    hasUnsavedChanges: boolean;
+    lastSavedAt: number | null;
+
+    // History loading state
     historyLoaded: boolean;
+
+    // Cleanup
     debouncedFunctions: DebouncedFunction[];
     cleanupFunctions: Array<() => void>;
 }
@@ -48,7 +59,18 @@ export function createInitialState(): PopupState {
         isRefining: false,
         abortController: null,
         activeStageView: 'score',
-        historyLoaded: false,
+
+        // Session management
+        activeSessionId: null,
+        sessions: [],
+        sessionsLoaded: false,
+        hasUnsavedChanges: false,
+        lastSavedAt: null,
+
+        // History loading
+        historyLoaded: true, // Default to true since we load on character select
+
+        // Cleanup
         debouncedFunctions: [],
         cleanupFunctions: [],
     };
@@ -63,6 +85,19 @@ export function addCleanupFunction(fn: () => void): void {
 export function updatePipeline(updater: (p: PipelineState) => PipelineState): void {
     if (popupState) {
         popupState.pipeline = updater(popupState.pipeline);
+    }
+}
+
+export function markUnsavedChanges(): void {
+    if (popupState) {
+        popupState.hasUnsavedChanges = true;
+    }
+}
+
+export function clearUnsavedChanges(): void {
+    if (popupState) {
+        popupState.hasUnsavedChanges = false;
+        popupState.lastSavedAt = Date.now();
     }
 }
 

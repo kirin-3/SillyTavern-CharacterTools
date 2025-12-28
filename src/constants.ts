@@ -18,7 +18,7 @@ export const MODULE_NAME = 'character_tools';
 export const EXTENSION_PATH = 'third-party/SillyTavern-CharacterTools';
 export const SETTINGS_VERSION = 4;
 export const VERSION = '1.1.1';
-export const CURRENT_PRESET_VERSION = 1;
+export const CURRENT_PRESET_VERSION = 2;
 
 // ============================================================================
 // CHARACTER FIELDS

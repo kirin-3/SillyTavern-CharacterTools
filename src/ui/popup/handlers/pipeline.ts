@@ -58,16 +58,46 @@ export function initPipelineNavListeners(): void {
         const resetBtn = (e.target as HTMLElement).closest(`#${MODULE_NAME}_reset_pipeline_btn`);
         if (resetBtn) {
             const { Popup, POPUP_RESULT } = SillyTavern.getContext();
-            const confirmed = await Popup.show.confirm(
-                'Reset Pipeline?',
-                'This will clear all results and iteration history. Continue?',
-            );
 
-            if (confirmed !== POPUP_RESULT.AFFIRMATIVE) return;
+            const hasContent = s.pipeline.results.score ||
+                s.pipeline.results.rewrite ||
+                s.pipeline.iterationHistory.length > 0;
+
+            if (hasContent) {
+                const confirmed = await Popup.show.confirm(
+                    'Reset Current Session?',
+                    'This will clear all results and start fresh. Your session will be saved first. Continue?',
+                );
+
+                if (confirmed !== POPUP_RESULT.AFFIRMATIVE) return;
+
+                // Save current state before reset
+                if (s.pipeline.character && s.hasUnsavedChanges) {
+                    const { saveSession } = await import('../../../persistence');
+                    await saveSession(s.pipeline.character, s.pipeline, s.activeSessionId || undefined);
+                }
+            }
+
+            // Reset pipeline but keep character
+            const character = s.pipeline.character;
+            const charIndex = s.pipeline.characterIndex;
 
             s.pipeline = resetPipeline(s.pipeline, true);
-            s.historyLoaded = true;
+            s.pipeline.characterIndex = charIndex;  // Restore the index
+            s.hasUnsavedChanges = false;
+
+            // Start a new session
+            if (character) {
+                const { saveSession, loadCharacterSessions } = await import('../../../persistence');
+                const sessionId = await saveSession(character, s.pipeline, undefined, `Session ${s.sessions.length + 1}`);
+                s.activeSessionId = sessionId;
+
+                const data = await loadCharacterSessions(character);
+                s.sessions = data.sessions;
+            }
+
             updateAllComponents();
+            toastr.info('Session reset');
         }
     });
 }
