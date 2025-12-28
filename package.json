@@ -1,7 +1,7 @@
 {
   "name": "sillytavern-character-tools",
   "type": "module",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "scripts": {
     "sync-version": "node scripts/sync-version.js",
