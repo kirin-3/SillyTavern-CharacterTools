@@ -134,6 +134,7 @@ export function getSettings(): Settings {
     const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
     const { lodash } = SillyTavern.libs;
 
+    // First time - initialize with defaults
     if (!extensionSettings[MODULE_NAME]) {
         debugLog('info', 'Initializing settings with defaults', null);
         extensionSettings[MODULE_NAME] = structuredClone(DEFAULT_SETTINGS);
@@ -143,33 +144,43 @@ export function getSettings(): Settings {
 
     const existing = extensionSettings[MODULE_NAME] as Partial<Settings>;
     const oldVersion = existing.settingsVersion || 1;
-    let needsSave = false;
 
-    // Run migrations if version is old
+    // Only do expensive operations if migration is needed
     if (oldVersion < SETTINGS_VERSION) {
-        needsSave = runMigrations(existing, oldVersion);
+        runMigrations(existing, oldVersion);
         existing.settingsVersion = SETTINGS_VERSION;
-    }
 
-    // Merge with defaults to ensure all fields exist
-    const merged = lodash.merge(
-        structuredClone(DEFAULT_SETTINGS),
-        existing,
-    ) as Settings;
+        // Merge with defaults to ensure all fields exist
+        const merged = lodash.merge(
+            structuredClone(DEFAULT_SETTINGS),
+            existing,
+        ) as Settings;
 
-    // Ensure builtin presets exist
-    const builtinsAdded = ensureBuiltinPresets(merged);
-    needsSave = needsSave || builtinsAdded;
+        // Ensure builtin presets exist
+        ensureBuiltinPresets(merged);
 
-    // Write back merged settings
-    extensionSettings[MODULE_NAME] = merged;
-
-    if (needsSave) {
+        // Write back merged settings and save
+        extensionSettings[MODULE_NAME] = merged;
         saveSettingsDebounced();
+
+        return merged;
     }
 
-    return merged;
+    // No migration needed - check if builtins need updating (rare)
+    const settings = existing as Settings;
+
+    // Only check builtins if presets arrays exist but might be missing new builtins
+    if (settings.promptPresets && settings.schemaPresets) {
+        const builtinsAdded = ensureBuiltinPresets(settings);
+        if (builtinsAdded) {
+            saveSettingsDebounced();
+        }
+    }
+
+    return settings;
 }
+
+
 
 /**
  * Ensure all builtin presets exist and are up-to-date in settings.

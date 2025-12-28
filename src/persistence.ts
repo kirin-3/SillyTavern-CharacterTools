@@ -332,30 +332,37 @@ function validateAndFixConfig(stage: StageName, config: StageConfig): StageConfi
     const fixed = { ...config };
 
     // Check if prompt preset still exists
-    if (fixed.promptPresetId && !getPromptPreset(fixed.promptPresetId)) {
-        debugLog('info', 'Prompt preset no longer exists, clearing reference', {
-            stage,
-            presetId: fixed.promptPresetId,
-        });
-        fixed.promptPresetId = null;
-        // Keep customPrompt if it has content, otherwise use default
-        if (!fixed.customPrompt?.trim()) {
-            const defaults = createStageConfigFromDefaults(stage);
-            fixed.promptPresetId = defaults.promptPresetId;
+    if (fixed.promptPresetId) {
+        const preset = getPromptPreset(fixed.promptPresetId);
+        if (!preset) {
+            debugLog('info', 'Prompt preset no longer exists, clearing reference', {
+                stage,
+                presetId: fixed.promptPresetId,
+            });
+            fixed.promptPresetId = null;
+            // Keep customPrompt if it has content, otherwise use default
+            if (!fixed.customPrompt?.trim()) {
+                const defaults = createStageConfigFromDefaults(stage);
+                fixed.promptPresetId = defaults.promptPresetId;
+            }
         }
     }
 
     // Check if schema preset still exists
-    if (fixed.schemaPresetId && !getSchemaPreset(fixed.schemaPresetId)) {
-        debugLog('info', 'Schema preset no longer exists, clearing reference', {
-            stage,
-            presetId: fixed.schemaPresetId,
-        });
-        fixed.schemaPresetId = null;
+    if (fixed.schemaPresetId) {
+        const preset = getSchemaPreset(fixed.schemaPresetId);
+        if (!preset) {
+            debugLog('info', 'Schema preset no longer exists, clearing reference', {
+                stage,
+                presetId: fixed.schemaPresetId,
+            });
+            fixed.schemaPresetId = null;
+        }
     }
 
     return fixed;
 }
+
 
 // ============================================================================
 // HELPERS

@@ -8,7 +8,7 @@ import { setCharacter, updateFieldSelection, selectAllFields, deselectAllFields 
 import { loadCharacterSessions, restorePipelineFromSession } from '../../../persistence';
 import { renderDropdownItems, updateFieldTokenCounts } from '../../components/character-select';
 import { getState, getElement, addCleanupFunction } from '../state';
-import { updateAllComponents, updateCharacterSelect, updateTokenEstimate } from '../updaters';
+import { updateAllComponents, updateCharacterSelect, updateTokenEstimate, updateSessionManager, updateIterationHistory, updateResultsPanel, updatePipelineNav } from '../updaters';
 import type { Character } from '../../../types';
 
 let characterSelectInitialized = false;
@@ -221,116 +221,134 @@ export function initCharacterSelectListeners(): void {
     });
 }
 
+let isSelectingCharacter = false;
+
 export async function selectCharacter(char: Character, index: number): Promise<void> {
     const state = getState();
     const el = getElement();
     if (!state || !el) return;
 
+    // Prevent re-entry
+    if (isSelectingCharacter) {
+        debugLog('info', 'Already selecting character, ignoring', null);
+        return;
+    }
+
+    isSelectingCharacter = true;
     const selectedIndex = index;
-    const { unshallowCharacter, characters } = SillyTavern.getContext();
 
     try {
-        await unshallowCharacter(index);
-    } catch (e) {
-        debugLog('error', 'Failed to unshallow character', { index, name: char.name, error: e });
-        toastr.error(`Failed to load character data for ${char.name}`);
-        return;
-    }
+        const { unshallowCharacter, characters } = SillyTavern.getContext();
 
-    // Re-acquire state after async operation
-    const s = getState();
-    const currentEl = getElement();
-    if (!s || !currentEl) {
-        debugLog('info', 'Popup closed during character load', null);
-        return;
-    }
-
-    const charList = characters as Character[];
-
-    if (index < 0 || index >= charList.length) {
-        debugLog('error', 'Character index out of bounds after unshallow', { index, listLength: charList.length });
-        toastr.error('Character no longer available');
-        return;
-    }
-
-    const fullChar = charList[index];
-
-    if (!fullChar || !fullChar.name) {
-        debugLog('error', 'Character data invalid after unshallow', { index, char: fullChar });
-        toastr.error('Failed to load character data');
-        return;
-    }
-
-    const populatedFields = getPopulatedFields(fullChar);
-    if (populatedFields.length === 0) {
-        debugLog('info', 'Character has no populated fields', { name: fullChar.name });
-        toastr.warning(`${fullChar.name} has no content to analyze`);
-    }
-
-    // Set character first
-    s.pipeline = setCharacter(s.pipeline, fullChar, index);
-    s.sessionsLoaded = false;
-    s.sessions = [];
-    s.activeSessionId = null;
-
-    updateAllComponents();
-
-    // Load sessions for this character
-    loadCharacterSessions(fullChar).then(async data => {
-        const currentState = getState();
-        if (!currentState || currentState.pipeline.characterIndex !== selectedIndex) {
-            debugLog('info', 'Character changed during session load, discarding', null);
+        try {
+            await unshallowCharacter(index);
+        } catch (e) {
+            debugLog('error', 'Failed to unshallow character', { index, name: char.name, error: e });
+            toastr.error(`Failed to load character data for ${char.name}`);
             return;
         }
 
-        currentState.sessions = data.sessions;
-        currentState.activeSessionId = data.activeSessionId;
-        currentState.sessionsLoaded = true;
-
-        // If there's an active session, restore it
-        if (data.activeSessionId && data.sessions.length > 0) {
-            const activeSession = data.sessions.find(s => s.id === data.activeSessionId);
-            if (activeSession) {
-                currentState.pipeline = restorePipelineFromSession(
-                    activeSession,
-                    fullChar,
-                    selectedIndex,
-                );
-                debugLog('info', 'Restored active session', {
-                    sessionId: data.activeSessionId,
-                    label: activeSession.label,
-                });
-                toastr.info(`Restored: ${activeSession.label}`);
-            }
+        // Re-acquire state after async operation
+        const s = getState();
+        const currentEl = getElement();
+        if (!s || !currentEl) {
+            debugLog('info', 'Popup closed during character load', null);
+            return;
         }
+
+        const charList = characters as Character[];
+
+        if (index < 0 || index >= charList.length) {
+            debugLog('error', 'Character index out of bounds after unshallow', { index, listLength: charList.length });
+            toastr.error('Character no longer available');
+            return;
+        }
+
+        const fullChar = charList[index];
+
+        if (!fullChar || !fullChar.name) {
+            debugLog('error', 'Character data invalid after unshallow', { index, char: fullChar });
+            toastr.error('Failed to load character data');
+            return;
+        }
+
+        const populatedFields = getPopulatedFields(fullChar);
+        if (populatedFields.length === 0) {
+            debugLog('info', 'Character has no populated fields', { name: fullChar.name });
+            toastr.warning(`${fullChar.name} has no content to analyze`);
+        }
+
+        // Set character first
+        s.pipeline = setCharacter(s.pipeline, fullChar, index);
+        s.sessionsLoaded = false;
+        s.sessions = [];
+        s.activeSessionId = null;
 
         updateAllComponents();
-    }).catch(e => {
-        debugLog('error', 'Failed to load sessions', e);
-        const currentState = getState();
-        if (currentState) {
+
+        // Load sessions for this character (non-blocking)
+        loadCharacterSessions(fullChar).then(async data => {
+            const currentState = getState();
+            if (!currentState || currentState.pipeline.characterIndex !== selectedIndex) {
+                debugLog('info', 'Character changed during session load, discarding', null);
+                return;
+            }
+
+            currentState.sessions = data.sessions;
+            currentState.activeSessionId = data.activeSessionId;
             currentState.sessionsLoaded = true;
-            updateAllComponents();
-        }
-    });
 
-    // Update token counts
-    setTimeout(async () => {
-        const currentEl = getElement();
-        const currentState = getState();
-        if (!currentEl || !currentState?.pipeline.character) return;
-        if (currentState.pipeline.characterIndex !== selectedIndex) return;
+            // If there's an active session, restore it
+            if (data.activeSessionId && data.sessions.length > 0) {
+                const activeSession = data.sessions.find(s => s.id === data.activeSessionId);
+                if (activeSession) {
+                    currentState.pipeline = restorePipelineFromSession(
+                        activeSession,
+                        fullChar,
+                        selectedIndex,
+                    );
+                    debugLog('info', 'Restored active session', {
+                        sessionId: data.activeSessionId,
+                        label: activeSession.label,
+                    });
+                    toastr.info(`Restored: ${activeSession.label}`);
+                }
+            }
 
-        const container = currentEl.querySelector(`#${MODULE_NAME}_character_select_container`);
-        if (container) {
-            const fields = getPopulatedFields(currentState.pipeline.character);
-            await updateFieldTokenCounts(container as HTMLElement, fields);
-        }
-    }, 50);
+            // Only update session-related components, not everything
+            updateSessionManager();
+            updateIterationHistory();
+            updateResultsPanel();
+            updatePipelineNav();
+        }).catch(e => {
+            debugLog('error', 'Failed to load sessions', e);
+            const currentState = getState();
+            if (currentState) {
+                currentState.sessionsLoaded = true;
+                updateSessionManager();
+            }
+        });
 
-    debugLog('info', 'Character selected', {
-        name: fullChar.name,
-        index,
-        fieldCount: populatedFields.length,
-    });
+        // Update token counts (non-blocking)
+        setTimeout(async () => {
+            const currentEl = getElement();
+            const currentState = getState();
+            if (!currentEl || !currentState?.pipeline.character) return;
+            if (currentState.pipeline.characterIndex !== selectedIndex) return;
+
+            const container = currentEl.querySelector(`#${MODULE_NAME}_character_select_container`);
+            if (container) {
+                const fields = getPopulatedFields(currentState.pipeline.character);
+                await updateFieldTokenCounts(container as HTMLElement, fields);
+            }
+        }, 50);
+
+        debugLog('info', 'Character selected', {
+            name: fullChar.name,
+            index,
+            fieldCount: populatedFields.length,
+        });
+    } finally {
+        isSelectingCharacter = false;
+    }
 }

@@ -2,6 +2,7 @@
 // All UI update functions
 
 import { MODULE_NAME, STAGE_LABELS, STAGE_ICONS } from '../../constants';
+import { debugLog } from '../../debug';
 import { getApiInfo, isApiReady, getStageTokenCount, getRefinementTokenCount } from '../../generator';
 import { getNextStage } from '../../pipeline';
 import { updateCharacterSelectState } from '../components/character-select';
@@ -12,15 +13,28 @@ import { updateIterationHistoryState } from '../components/iteration-history';
 import { renderSessionManager, updateSessionManagerState } from '../components/session-manager';
 import { getState, getElement } from './state';
 
+let isUpdating = false;
+
 export function updateAllComponents(): void {
-    updateCharacterSelect();
-    updateSessionManager();
-    updatePipelineNav();
-    updateStageSection();
-    updateResultsPanel();
-    updateTokenEstimate();
-    updateIterationIndicator();
-    updateIterationHistory();
+    // Prevent re-entry which can cause infinite loops
+    if (isUpdating) {
+        debugLog('info', 'updateAllComponents already running, skipping', null);
+        return;
+    }
+
+    isUpdating = true;
+    try {
+        updateCharacterSelect();
+        updateSessionManager();
+        updatePipelineNav();
+        updateStageSection();
+        updateResultsPanel();
+        updateTokenEstimate();
+        updateIterationIndicator();
+        updateIterationHistory();
+    } finally {
+        isUpdating = false;
+    }
 }
 
 export function updateApiStatus(): void {

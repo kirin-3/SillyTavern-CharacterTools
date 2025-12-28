@@ -7,7 +7,7 @@
   "js": "dist/index.js",
   "css": "style.css",
   "author": "Inktomi",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "homePage": "https://github.com/Inktomi93/SillyTavern-CharacterTools",
   "auto_update": true,
   "minimum_client_version": "",

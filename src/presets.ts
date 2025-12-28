@@ -18,7 +18,7 @@ import {
     getSchemaPresets,
 } from './settings';
 import { validateSchema, formatSchema } from './schema';
-import { TEMPLATE_PLACEHOLDERS } from './constants';
+import { TEMPLATE_PLACEHOLDERS, DEFAULT_STAGE_DEFAULTS  } from './constants';
 import { debugLog } from './debug';
 
 // ============================================================================
@@ -93,7 +93,7 @@ export function resolveSchema(config: StageConfig): StructuredOutputSchema | nul
  */
 export function createStageConfigFromDefaults(stage: StageName): StageConfig {
     const settings = getSettings();
-    const defaults = settings.stageDefaults[stage];
+    const defaults = settings.stageDefaults?.[stage] ?? DEFAULT_STAGE_DEFAULTS[stage];
 
     return {
         promptPresetId: defaults.promptPresetId,

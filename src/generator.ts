@@ -124,7 +124,6 @@ export async function runStageGeneration(
     const processedPrompt = substituteCharacterPlaceholders(
         userPrompt,
         state.character.name,
-        context.name1 || 'User',
     );
 
     // Get full system prompt for this stage
@@ -201,7 +200,6 @@ export async function runRefinementGeneration(
     const processedPrompt = substituteCharacterPlaceholders(
         userPrompt,
         state.character.name,
-        context.name1 || 'User',
     );
 
     // Get system prompt (use 'rewrite' stage additions for refinement)
@@ -735,7 +733,6 @@ function ensureString(value: unknown): string {
 function substituteCharacterPlaceholders(
     text: string,
     charName: string,
-    userName: string,
 ): string {
     return text
         .replace(/\{\{char\}\}/gi, charName);
