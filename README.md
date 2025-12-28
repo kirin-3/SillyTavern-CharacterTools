@@ -415,25 +415,3 @@ AGPL-3.0
 [GitHub Issues](https://github.com/Inktomi93/SillyTavern-CharacterTools/issues)
 
 ---
-
-## Screenshot Checklist
-
-For the README screenshots, capture:
-
-1. **Main Interface** — Full popup with character selected, pipeline visible, some results showing
-2. **Score Results** — Expanded score output showing field breakdown with ratings
-3. **Analysis Results** — Analyze output with verdict badge visible, preserved/lost/gained sections
-4. **Iteration History** — History panel with 2-3 iterations, different verdicts
-5. **Field Selection** — Character preview with checkboxes, mix of selected/unselected
-6. **Character Search** — Dropdown open with search results
-7. **Pipeline Nav** — Close-up of the stage buttons with checkboxes
-8. **Results Panel** — Results with toolbar and footer actions visible
-9. **Extension Panel** — The entry point in ST's extensions panel
-10. **Settings Modal** — Settings open, showing Generation section
-11. **Schema Generation** — Either the input dialog or the result in the textarea
-
-TODO: Fix analyze button not giving iterate when run stage instead of run all
-TODO: Fix settings screen not being centered
-TODO: Fix Extension not resizing properly on desktop when browser window is adjusted, text gets cut off
-TODO: Preset dropdown arrow is obscured by longer preset names and preset drowndown sizes differ, inconsistent
-

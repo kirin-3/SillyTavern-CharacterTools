@@ -22,7 +22,16 @@ import { buildStagePrompt, buildRefinementPrompt, getStageSchema } from './pipel
  */
 export function isApiReady(): boolean {
     const { onlineStatus } = SillyTavern.getContext();
-    return onlineStatus === 'Valid' || onlineStatus === 'Connected';
+
+    // Handle various status string formats across different APIs
+    // Some report uppercase, some lowercase, some might be null/undefined
+    if (!onlineStatus) return false;
+
+    const status = String(onlineStatus).toLowerCase();
+    return status === 'valid'
+        || status === 'connected'
+        || status === 'ok'
+        || status === 'ready';
 }
 
 /**
@@ -33,11 +42,30 @@ export function getApiInfo(): { source: string; model: string; isReady: boolean 
     const settings = getSettings();
 
     if (settings.useCurrentSettings) {
+        const ccs = context.chatCompletionSettings || {};
+        const source = ccs.chat_completion_source || context.mainApi || 'unknown';
+
+        // Different APIs store their model selection in different properties
+        // Try them in rough order of popularity
+        const model =
+            ccs.openrouter_model ||
+            ccs.model_openai_select ||
+            ccs.model_google_select ||      // Google AI Studio / Vertex
+            ccs.model_claude_select ||       // Anthropic direct
+            ccs.model_mistralai_select ||
+            ccs.model_cohere_select ||
+            ccs.model_perplexity_select ||
+            ccs.model_groq_select ||
+            ccs.model_ai21_select ||
+            ccs.model_deepseek_select ||
+            ccs.model_custom_select ||       // Custom API
+            ccs.model ||                     // Generic fallback
+            context.textCompletionSettings?.model ||  // Text completion fallback
+            'unknown';
+
         return {
-            source: context.chatCompletionSettings?.chat_completion_source || context.mainApi || 'unknown',
-            model: context.chatCompletionSettings?.openrouter_model ||
-             context.chatCompletionSettings?.model_openai_select ||
-             'unknown',
+            source,
+            model: String(model),
             isReady: isApiReady(),
         };
     }
@@ -74,8 +102,12 @@ export async function runStageGeneration(
     }
 
     if (!isApiReady()) {
-        logError('API not ready', { onlineStatus: context.onlineStatus });
-        return { success: false, error: 'API is not connected. Check your connection settings.' };
+        const status = context.onlineStatus || 'unknown';
+        logError('API not ready', { onlineStatus: status });
+        return {
+            success: false,
+            error: `API is not connected (status: ${status}). Check your connection settings.`,
+        };
     }
 
     // Build prompt
@@ -98,6 +130,7 @@ export async function runStageGeneration(
     // Get full system prompt for this stage
     const systemPrompt = getFullSystemPrompt(stage);
 
+    const apiInfo = getApiInfo();
     debugLog('info', 'Starting stage generation', {
         stage,
         character: state.character.name,
@@ -106,6 +139,8 @@ export async function runStageGeneration(
         schemaName: jsonSchema?.name,
         promptLength: processedPrompt.length,
         systemPromptLength: systemPrompt.length,
+        apiSource: apiInfo.source,
+        apiModel: apiInfo.model,
     });
 
     const result = await executeGeneration(
@@ -148,8 +183,12 @@ export async function runRefinementGeneration(
     }
 
     if (!isApiReady()) {
-        logError('API not ready', { onlineStatus: context.onlineStatus });
-        return { success: false, error: 'API is not connected. Check your connection settings.' };
+        const status = context.onlineStatus || 'unknown';
+        logError('API not ready', { onlineStatus: status });
+        return {
+            success: false,
+            error: `API is not connected (status: ${status}). Check your connection settings.`,
+        };
     }
 
     // Build refinement prompt
@@ -287,11 +326,26 @@ async function executeGeneration(
             return { success: false, error: 'Generation cancelled' };
         }
 
-        logError('Generation exception', {
-            message: err instanceof Error ? err.message : String(err),
-        });
-
         const errorMessage = err instanceof Error ? err.message : String(err);
+        logError('Generation exception', { message: errorMessage, error: err });
+
+        // Provide more helpful error messages for common issues
+        if (errorMessage.includes('401') || errorMessage.includes('unauthorized')) {
+            return { success: false, error: 'API authentication failed. Check your API key.' };
+        }
+        if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+            return { success: false, error: 'Rate limited. Please wait and try again.' };
+        }
+        if (errorMessage.includes('500') || errorMessage.includes('502') || errorMessage.includes('503')) {
+            return { success: false, error: 'API server error. The service may be temporarily unavailable.' };
+        }
+        if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+            return { success: false, error: 'Request timed out. Try again or check your connection.' };
+        }
+        if (errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED')) {
+            return { success: false, error: 'Network error. Check your internet connection.' };
+        }
+
         return { success: false, error: errorMessage };
     }
 }
@@ -301,7 +355,8 @@ async function executeGeneration(
 // ============================================================================
 
 /**
- * Generate using ST's current API settings
+ * Generate using ST's current API settings via generateRaw.
+ * Uses string prompt + systemPrompt for maximum cross-API compatibility.
  */
 async function generateWithCurrentSettings(
     systemPrompt: string,
@@ -310,6 +365,11 @@ async function generateWithCurrentSettings(
     signal?: AbortSignal,
 ): Promise<string> {
     const { generateRaw, substituteParams } = SillyTavern.getContext();
+
+    // Validate generateRaw is available
+    if (typeof generateRaw !== 'function') {
+        throw new Error('generateRaw not available - SillyTavern version may be incompatible');
+    }
 
     const processedSystemPrompt = substituteParams(systemPrompt);
 
@@ -324,12 +384,13 @@ async function generateWithCurrentSettings(
         throw new DOMException('Aborted', 'AbortError');
     }
 
+    // Use string prompt + systemPrompt option for better cross-API compatibility
+    // Some APIs (like Vertex AI) handle message arrays differently
+    // The systemPrompt option is more universally supported
     const rawResponse = await generateRaw({
-        prompt: [
-            { role: 'system', content: processedSystemPrompt },
-            { role: 'user', content: userPrompt },
-        ],
-        jsonSchema: jsonSchema as StructuredOutputSchema | null,
+        prompt: userPrompt,
+        systemPrompt: processedSystemPrompt,
+        jsonSchema: jsonSchema ?? undefined,
     });
 
     if (signal?.aborted) {
@@ -340,6 +401,7 @@ async function generateWithCurrentSettings(
 
     debugLog('response', 'generateRaw response', {
         type: typeof rawResponse,
+        rawType: rawResponse === null ? 'null' : rawResponse === undefined ? 'undefined' : typeof rawResponse,
         length: response.length,
         preview: response.substring(0, 200),
     });
@@ -348,7 +410,9 @@ async function generateWithCurrentSettings(
 }
 
 /**
- * Generate using custom API settings
+ * Generate using custom API settings via ChatCompletionService.
+ * This bypasses ST's default settings and uses explicit configuration.
+ * Note: This is more likely to have compatibility issues with non-standard APIs.
  */
 async function generateWithCustomSettings(
     systemPrompt: string,
@@ -360,8 +424,15 @@ async function generateWithCustomSettings(
     const settings = getSettings();
     const config = settings.generationConfig;
 
+    // Validate ChatCompletionService is available
+    if (!ChatCompletionService || typeof ChatCompletionService.sendRequest !== 'function') {
+        throw new Error('ChatCompletionService not available - falling back may be needed');
+    }
+
     const processedSystemPrompt = substituteParams(systemPrompt);
 
+    // Build request options - these are somewhat OpenAI-compatible
+    // Other APIs may require different parameters
     const requestOptions: Record<string, unknown> = {
         stream: true,
         messages: [
@@ -369,13 +440,31 @@ async function generateWithCustomSettings(
             { role: 'user', content: userPrompt },
         ],
         chat_completion_source: config.source,
-        model: config.model,
-        temperature: config.temperature,
         max_tokens: config.maxTokens,
-        frequency_penalty: config.frequencyPenalty,
-        presence_penalty: config.presencePenalty,
-        top_p: config.topP,
+        temperature: config.temperature,
     };
+
+    // Model parameter - some sources use different keys
+    // Try to be smart about which one to use
+    if (config.source === 'openrouter') {
+        requestOptions.model = config.model;
+    } else if (config.source === 'openai' || config.source === 'azure_openai') {
+        requestOptions.model = config.model;
+    } else {
+        // Generic - set both in case the API needs one or the other
+        requestOptions.model = config.model;
+    }
+
+    // Optional parameters - only include if non-default to avoid API issues
+    if (config.frequencyPenalty !== 0) {
+        requestOptions.frequency_penalty = config.frequencyPenalty;
+    }
+    if (config.presencePenalty !== 0) {
+        requestOptions.presence_penalty = config.presencePenalty;
+    }
+    if (config.topP !== 1) {
+        requestOptions.top_p = config.topP;
+    }
 
     if (jsonSchema) {
         requestOptions.json_schema = jsonSchema;
@@ -386,6 +475,7 @@ async function generateWithCustomSettings(
         model: config.model,
         stream: true,
         hasSchema: !!jsonSchema,
+        messageCount: 2,
     });
 
     if (signal?.aborted) {
@@ -398,22 +488,45 @@ async function generateWithCustomSettings(
         type: typeof result,
         isFunction: typeof result === 'function',
         isGenerator: result && typeof result === 'object' && Symbol.asyncIterator in result,
+        isNull: result === null,
+        isUndefined: result === undefined,
     });
 
     let response: string;
 
+    // Handle different response formats
     if (typeof result === 'function') {
+        // Streaming generator function
         response = await consumeStreamGenerator(result, signal);
     } else if (result && typeof result === 'object') {
         const resultObj = result as Record<string, unknown>;
 
+        // Check for error responses
         if (resultObj.error) {
-            logError('API returned error', result);
-            throw new Error(`API error: ${JSON.stringify(result)}`);
+            logError('API returned error in response object', result);
+            const errorMsg = typeof resultObj.error === 'string'
+                ? resultObj.error
+                : JSON.stringify(resultObj.error);
+            throw new Error(`API error: ${errorMsg}`);
         }
 
-        response = ensureString(resultObj.content || result);
+        // Extract content from various possible response formats
+        // Type assertions needed for nested property access
+        const message = resultObj.message as Record<string, unknown> | undefined;
+        const choices = resultObj.choices as Array<Record<string, unknown>> | undefined;
+
+        response = ensureString(
+            resultObj.content ||
+            resultObj.text ||
+            message?.content ||
+            (choices?.[0]?.message as Record<string, unknown> | undefined)?.content ||
+            choices?.[0]?.text ||
+            result,
+        );
+    } else if (typeof result === 'string') {
+        response = result;
     } else {
+        // Last resort - stringify whatever we got
         response = ensureString(result);
     }
 
@@ -424,6 +537,7 @@ async function generateWithCustomSettings(
 
     return response;
 }
+
 
 /**
  * Consume a streaming generator and return the final accumulated text
@@ -449,14 +563,32 @@ async function consumeStreamGenerator(
                 throw new DOMException('Aborted', 'AbortError');
             }
 
-            const chunkObj = chunk as Record<string, unknown>;
+            // Handle various chunk formats
+            if (typeof chunk === 'string') {
+                finalText = chunk;
+            } else if (chunk && typeof chunk === 'object') {
+                const chunkObj = chunk as Record<string, unknown>;
 
-            if (typeof chunkObj.text === 'string') {
-                finalText = chunkObj.text;
-            }
+                // Accumulated text (most common)
+                if (typeof chunkObj.text === 'string') {
+                    finalText = chunkObj.text;
+                }
+                // Delta/incremental text
+                else if (typeof chunkObj.delta === 'string') {
+                    finalText += chunkObj.delta;
+                }
+                // Content field
+                else if (typeof chunkObj.content === 'string') {
+                    finalText = chunkObj.content;
+                }
 
-            if (chunkObj.error) {
-                throw new Error(ensureString(chunkObj.error));
+                // Check for errors in chunk
+                if (chunkObj.error) {
+                    const errorMsg = typeof chunkObj.error === 'string'
+                        ? chunkObj.error
+                        : JSON.stringify(chunkObj.error);
+                    throw new Error(errorMsg);
+                }
             }
         }
     } catch (err) {
@@ -469,6 +601,7 @@ async function consumeStreamGenerator(
             textSoFar: finalText.length,
         });
 
+        // Clean up generator
         if (generator) {
             try {
                 await generator.return(undefined);
@@ -477,6 +610,7 @@ async function consumeStreamGenerator(
             }
         }
 
+        // Return partial response if we have any
         if (finalText) {
             debugLog('info', 'Returning partial response after stream error', {
                 length: finalText.length,
@@ -506,6 +640,12 @@ export async function getStageTokenCount(
 
     if (!state.character) return null;
 
+    // Validate getTokenCountAsync is available
+    if (typeof getTokenCountAsync !== 'function') {
+        debugLog('info', 'getTokenCountAsync not available', null);
+        return null;
+    }
+
     try {
         const prompt = buildStagePrompt(state, stage);
         if (!prompt) return null;
@@ -513,11 +653,12 @@ export async function getStageTokenCount(
         const systemPrompt = getFullSystemPrompt(stage);
         const fullPrompt = systemPrompt + '\n\n' + prompt;
         const promptTokens = await getTokenCountAsync(fullPrompt);
-        const percentage = Math.round((promptTokens / maxContext) * 100);
+        const contextSize = maxContext || 8192; // Fallback if not set
+        const percentage = Math.round((promptTokens / contextSize) * 100);
 
         return {
             promptTokens,
-            contextSize: maxContext,
+            contextSize,
             percentage,
         };
     } catch (e) {
@@ -536,6 +677,11 @@ export async function getRefinementTokenCount(
 
     if (!state.character || !state.results.rewrite || !state.results.analyze) return null;
 
+    if (typeof getTokenCountAsync !== 'function') {
+        debugLog('info', 'getTokenCountAsync not available', null);
+        return null;
+    }
+
     try {
         const prompt = buildRefinementPrompt(state);
         if (!prompt) return null;
@@ -543,11 +689,12 @@ export async function getRefinementTokenCount(
         const systemPrompt = getFullSystemPrompt('rewrite');
         const fullPrompt = systemPrompt + '\n\n' + prompt;
         const promptTokens = await getTokenCountAsync(fullPrompt);
-        const percentage = Math.round((promptTokens / maxContext) * 100);
+        const contextSize = maxContext || 8192;
+        const percentage = Math.round((promptTokens / contextSize) * 100);
 
         return {
             promptTokens,
-            contextSize: maxContext,
+            contextSize,
             percentage,
         };
     } catch (e) {
@@ -561,12 +708,18 @@ export async function getRefinementTokenCount(
 // ============================================================================
 
 /**
- * Safely convert response to string
+ * Safely convert any value to a string
  */
 function ensureString(value: unknown): string {
     if (typeof value === 'string') return value;
     if (value === null || value === undefined) return '';
     if (typeof value === 'object') {
+        // Handle objects that might have a text/content property
+        const obj = value as Record<string, unknown>;
+        if (typeof obj.text === 'string') return obj.text;
+        if (typeof obj.content === 'string') return obj.content;
+        if (typeof obj.message === 'string') return obj.message;
+
         try {
             return JSON.stringify(value);
         } catch {

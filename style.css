@@ -2206,3 +2206,17 @@
     outline-offset: 2px;
   }
 }
+
+.character_tools_char_loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    color: var(--SmartThemeBodyColor);
+    font-size: 0.9em;
+}
+
+.character_tools_char_loading i {
+    color: var(--SmartThemeQuoteColor);
+}

@@ -10,6 +10,23 @@ import type { Character, CharacterField, PopulatedField, DepthPrompt, CharacterB
 // ============================================================================
 
 /**
+ * Fields that can exist at both top-level AND in data.*
+ * Maps field key to top-level property name
+ */
+const TOP_LEVEL_FALLBACKS: Record<string, string> = {
+    system_prompt: 'system_prompt',
+    post_history_instructions: 'post_history_instructions',
+    creator_notes: 'creator_notes',
+};
+
+/**
+ * Legacy field name mappings (old field name -> current field key)
+ */
+const LEGACY_FIELD_NAMES: Record<string, string> = {
+    creator_notes: 'creatorcomment',
+};
+
+/**
  * Get a value from a character using a dot-notation path.
  * Supports paths like 'data.system_prompt' or 'data.extensions.depth_prompt'
  */
@@ -134,6 +151,51 @@ function formatObjectField(value: unknown, key: string): string {
     }
 }
 
+/**
+ * Try to get a field value, checking multiple possible locations.
+ * Order: primary path -> top-level fallback -> legacy field name
+ */
+function getFieldValue(char: Character, field: CharacterField): unknown {
+    const type = field.type || 'string';
+    const charRecord = char as unknown as Record<string, unknown>;
+
+    // 1. Try the primary path (e.g., 'data.system_prompt')
+    let value = getValueByPath(char, field.path);
+    if (isPopulatedValue(value, type)) {
+        return value;
+    }
+
+    // 2. For top-level simple paths, also try direct property access
+    //    (handles case where path is 'description' and we access char.description)
+    if (!field.path.includes('.')) {
+        value = charRecord[field.key];
+        if (isPopulatedValue(value, type)) {
+            return value;
+        }
+    }
+
+    // 3. Check top-level fallback for fields that can exist at both levels
+    //    (e.g., system_prompt can be at char.system_prompt OR char.data.system_prompt)
+    const topLevelKey = TOP_LEVEL_FALLBACKS[field.key];
+    if (topLevelKey) {
+        value = charRecord[topLevelKey];
+        if (isPopulatedValue(value, type)) {
+            return value;
+        }
+    }
+
+    // 4. Check legacy field names (e.g., creatorcomment -> creator_notes)
+    const legacyKey = LEGACY_FIELD_NAMES[field.key];
+    if (legacyKey) {
+        value = charRecord[legacyKey];
+        if (isPopulatedValue(value, type)) {
+            return value;
+        }
+    }
+
+    return undefined;
+}
+
 // ============================================================================
 // FIELD EXTRACTION
 // ============================================================================
@@ -142,26 +204,14 @@ function formatObjectField(value: unknown, key: string): string {
  * Get all populated fields from a character
  */
 export function getPopulatedFields(char: Character): PopulatedField[] {
+    if (!char) return [];
+
     const populated: PopulatedField[] = [];
 
     for (const field of CHARACTER_FIELDS) {
-        const type = field.type || 'string';
-        let value = getValueByPath(char, field.path);
+        const value = getFieldValue(char, field);
 
-        // For top-level fields, also check direct access
-        if (!isPopulatedValue(value, type) && !field.path.includes('.')) {
-            value = (char as unknown as Record<string, unknown>)[field.key];
-        }
-
-        // Special case: creator_notes can also be 'creatorcomment' at top level
-        if (field.key === 'creator_notes' && !isPopulatedValue(value, type)) {
-            const legacy = char.creatorcomment;
-            if (legacy && typeof legacy === 'string' && legacy.trim()) {
-                value = legacy;
-            }
-        }
-
-        if (!isPopulatedValue(value, type)) {
+        if (value === undefined) {
             continue;
         }
 
@@ -193,6 +243,84 @@ export function getTotalCharCount(char: Character): number {
  */
 export function getPopulatedFieldCount(char: Character): number {
     return getPopulatedFields(char).length;
+}
+
+// ============================================================================
+// DIAGNOSTICS
+// ============================================================================
+
+/**
+ * Check if a character appears to be "shallow" (missing data.* fields).
+ * Useful for debugging when unshallowCharacter wasn't called.
+ */
+export function isShallowCharacter(char: Character): boolean {
+    if (!char) return true;
+
+    // Shallow characters typically have name/avatar but no data object
+    // or an empty/minimal data object
+    if (!char.data) return true;
+
+    // Check for typical V2 fields that should be in data
+    const hasV2Data = !!(
+        char.data.description ||
+        char.data.personality ||
+        char.data.first_mes ||
+        char.data.system_prompt
+    );
+
+    return !hasV2Data;
+}
+
+/**
+ * Get diagnostic info about character data structure.
+ * Useful for debugging field extraction issues.
+ */
+export function getCharacterDiagnostics(char: Character): {
+    hasData: boolean;
+    isShallow: boolean;
+    topLevelFields: string[];
+    dataFields: string[];
+    extensionFields: string[];
+} {
+    if (!char) {
+        return {
+            hasData: false,
+            isShallow: true,
+            topLevelFields: [],
+            dataFields: [],
+            extensionFields: [],
+        };
+    }
+
+    const charRecord = char as unknown as Record<string, unknown>;
+
+    const topLevelFields = Object.keys(charRecord).filter(k => {
+        const val = charRecord[k];
+        return val !== undefined && val !== null && val !== '' &&
+               typeof val !== 'object';
+    });
+
+    const dataFields = char.data
+        ? Object.keys(char.data).filter(k => {
+            const val = (char.data as Record<string, unknown>)[k];
+            return val !== undefined && val !== null && val !== '';
+        })
+        : [];
+
+    const extensionFields = char.data?.extensions
+        ? Object.keys(char.data.extensions).filter(k => {
+            const val = (char.data!.extensions as Record<string, unknown>)[k];
+            return val !== undefined && val !== null;
+        })
+        : [];
+
+    return {
+        hasData: !!char.data,
+        isShallow: isShallowCharacter(char),
+        topLevelFields,
+        dataFields,
+        extensionFields,
+    };
 }
 
 // ============================================================================
@@ -287,6 +415,11 @@ export function hasAnalyzableContent(char: Character): boolean {
 export function validateCharacter(char: Character): string[] {
     const issues: string[] = [];
 
+    if (!char) {
+        issues.push('No character provided');
+        return issues;
+    }
+
     if (!char.name?.trim()) {
         issues.push('Character has no name');
     }
@@ -294,6 +427,11 @@ export function validateCharacter(char: Character): string[] {
     const fields = getPopulatedFields(char);
     if (fields.length === 0) {
         issues.push('Character has no populated fields');
+
+        // Add diagnostic hint
+        if (isShallowCharacter(char)) {
+            issues.push('Character appears to be shallow-loaded (missing data.* fields)');
+        }
     }
 
     return issues;

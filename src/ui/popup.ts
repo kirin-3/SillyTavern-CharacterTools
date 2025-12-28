@@ -812,17 +812,100 @@ function initCharacterSelectListeners(): void {
 }
 
 async function selectCharacter(char: Character, index: number): Promise<void> {
-    if (!popupState) return;
+    if (!popupState || !popupElement) return;
 
     const selectedIndex = index;
 
-    popupState.pipeline = setCharacter(popupState.pipeline, char, index);
+    // Show loading state immediately
+    const charContainer = popupElement.querySelector(`#${MODULE_NAME}_character_select_container`);
+    if (charContainer) {
+        charContainer.innerHTML = `
+            <div class="${MODULE_NAME}_char_loading">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span>Loading ${char.name}...</span>
+            </div>
+        `;
+    }
+
+    // Unshallow the character to get full data
+    const { unshallowCharacter, characters } = SillyTavern.getContext();
+
+    try {
+        await unshallowCharacter(index);
+    } catch (e) {
+        debugLog('error', 'Failed to unshallow character', { index, name: char.name, error: e });
+        toastr.error(`Failed to load character data for ${char.name}`);
+
+        // Restore search UI on failure
+        if (charContainer) {
+            charContainer.innerHTML = renderCharacterSelect(
+                characters as Character[],
+                null,
+                {},
+            );
+            initCharacterSelectListeners();
+        }
+        return;
+    }
+
+    // Bail if popup closed during async operation
+    if (!popupState || !popupElement) {
+        debugLog('info', 'Popup closed during character load', null);
+        return;
+    }
+
+    // Re-fetch character list - unshallowCharacter mutates in place
+    const charList = characters as Character[];
+
+    // Validate index is still valid
+    if (index < 0 || index >= charList.length) {
+        debugLog('error', 'Character index out of bounds after unshallow', { index, listLength: charList.length });
+        toastr.error('Character no longer available');
+
+        if (charContainer) {
+            charContainer.innerHTML = renderCharacterSelect(charList, null, {});
+            initCharacterSelectListeners();
+        }
+        return;
+    }
+
+    const fullChar = charList[index];
+
+    // Validate we got actual data
+    if (!fullChar || !fullChar.name) {
+        debugLog('error', 'Character data invalid after unshallow', { index, char: fullChar });
+        toastr.error('Failed to load character data');
+
+        if (charContainer) {
+            charContainer.innerHTML = renderCharacterSelect(charList, null, {});
+            initCharacterSelectListeners();
+        }
+        return;
+    }
+
+    // Check if we actually got field data (shallow chars may still lack data.* fields)
+    const populatedFields = getPopulatedFields(fullChar);
+    if (populatedFields.length === 0) {
+        debugLog('info', 'Character has no populated fields', { name: fullChar.name });
+        toastr.warning(`${fullChar.name} has no content to analyze`);
+        // Still allow selection - user can see the empty state
+    }
+
+    // Update pipeline state with full character
+    popupState.pipeline = setCharacter(popupState.pipeline, fullChar, index);
     popupState.historyLoaded = false;
+
+    // Update all UI components
     updateAllComponents();
 
-    const history = await loadIterationHistory(char);
+    // Load iteration history (async, non-blocking)
+    loadIterationHistory(fullChar).then(history => {
+        // Verify we're still on the same character
+        if (!popupState || popupState.pipeline.characterIndex !== selectedIndex) {
+            debugLog('info', 'Character changed during history load, discarding', null);
+            return;
+        }
 
-    if (popupState && popupState.pipeline.characterIndex === selectedIndex) {
         if (history && history.length > 0) {
             popupState.pipeline = {
                 ...popupState.pipeline,
@@ -831,13 +914,20 @@ async function selectCharacter(char: Character, index: number): Promise<void> {
             };
             debugLog('info', 'Loaded iteration history', { count: history.length });
         }
+
         popupState.historyLoaded = true;
         updateIterationHistory();
-    }
+    }).catch(e => {
+        debugLog('error', 'Failed to load iteration history', e);
+        if (popupState) {
+            popupState.historyLoaded = true; // Mark as loaded even on failure
+            updateIterationHistory();
+        }
+    });
 
+    // Update token counts after a tick (let UI settle)
     setTimeout(async () => {
         if (!popupElement || !popupState?.pipeline.character) return;
-
         if (popupState.pipeline.characterIndex !== selectedIndex) return;
 
         const container = popupElement.querySelector(`#${MODULE_NAME}_character_select_container`);
@@ -847,8 +937,14 @@ async function selectCharacter(char: Character, index: number): Promise<void> {
         }
     }, 50);
 
-    debugLog('info', 'Character selected', { name: char.name, index });
+    debugLog('info', 'Character selected', {
+        name: fullChar.name,
+        index,
+        fieldCount: populatedFields.length,
+    });
 }
+
+
 
 // ============================================================================
 // PIPELINE NAV LISTENERS
