@@ -1447,6 +1447,7 @@
 .character_tools_shortcut_item {
   display: flex;
   align-items: center;
+  color: inherit;
   gap: 6px;
   font-size: 0.85em;
 }
@@ -1454,6 +1455,7 @@
 .character_tools_shortcut_item kbd {
   display: inline-block;
   padding: 2px 6px;
+  color: inherit;
   font-family: var(--monoFontFamily);
   font-size: 0.8em;
   background: var(--SmartThemeChatTintColor);
