@@ -8,6 +8,31 @@ import { validateSchema, autoFixSchema, generateSchemaFromDescription } from '..
 import type { StageName, StageConfig, PromptPreset, SchemaPreset } from '../../types';
 
 // ============================================================================
+// SCHEMA VALIDATION CACHE
+// ============================================================================
+
+interface CachedValidation {
+    content: string;
+    result: { valid: boolean; error?: string; warnings?: string[] };
+}
+
+let schemaValidationCache: CachedValidation | null = null;
+
+function getCachedSchemaValidation(content: string): { valid: boolean; error?: string; warnings?: string[] } {
+    if (schemaValidationCache && schemaValidationCache.content === content) {
+        return schemaValidationCache.result;
+    }
+
+    const result = validateSchema(content);
+    schemaValidationCache = { content, result };
+    return result;
+}
+
+export function clearSchemaValidationCache(): void {
+    schemaValidationCache = null;
+}
+
+// ============================================================================
 // RENDER
 // ============================================================================
 
@@ -15,7 +40,7 @@ export function renderStageConfig(
     stage: StageName,
     config: StageConfig,
     tokenEstimate: { tokens: number; percentage: number } | null,
-    hasCharacter: boolean,  // ADD THIS PARAMETER
+    hasCharacter: boolean,
 ): string {
     const promptPresets = getPromptPresets(stage);
     const schemaPresets = getSchemaPresets(stage);
@@ -34,11 +59,11 @@ export function renderStageConfig(
         if (preset) schemaContent = JSON.stringify(preset.schema, null, 2);
     }
 
-    // Validate schema if present
+    // Validate schema if present (using cache)
     let schemaStatus = '';
     let schemaValidation: { valid: boolean; error?: string; warnings?: string[] } = { valid: true };
     if (config.useStructuredOutput && schemaContent.trim()) {
-        schemaValidation = validateSchema(schemaContent);
+        schemaValidation = getCachedSchemaValidation(schemaContent);
         if (!schemaValidation.valid) {
             schemaStatus = `<div class="${MODULE_NAME}_schema_status error"><i class="fa-solid fa-circle-xmark"></i> ${escapeHtml(schemaValidation.error || 'Invalid schema')}</div>`;
         } else if (schemaValidation.warnings?.length) {
@@ -620,7 +645,7 @@ function updateSchemaValidation(container: HTMLElement, schemaContent: string): 
         return;
     }
 
-    const validation = validateSchema(schemaContent);
+    const validation = getCachedSchemaValidation(schemaContent);
     let statusHtml = '';
 
     if (!validation.valid) {
