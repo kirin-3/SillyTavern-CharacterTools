@@ -19,7 +19,7 @@ import {
     getSchemaPresets,
 } from './settings';
 import { validateSchema, formatSchema } from './schema';
-import { TEMPLATE_PLACEHOLDERS, DEFAULT_STAGE_DEFAULTS  } from './constants';
+import { TEMPLATE_PLACEHOLDERS, DEFAULT_STAGE_DEFAULTS } from './constants';
 import { debugLog } from './debug';
 
 // ============================================================================
@@ -105,28 +105,35 @@ export function createStageConfigFromDefaults(stage: StageName): StageConfig {
     };
 }
 
-
 /**
- * Process a prompt template, replacing placeholders with actual values.
+ * Process a prompt template, replacing OUR placeholders with actual values.
  *
- * Order of operations:
- * 1. Run ST's substituteParams for standard macros ({{time}}, {{date}}, etc.)
- * 2. Replace our custom placeholders ({{original_character}}, {{score_results}}, etc.)
- * 3. Replace {{char}} and {{user}} with our specific character/user names
- *    (This overrides ST's substitution which uses the active chat character)
- * 4. Handle conditional blocks {{#if score_results}}...{{/if}}
+ * We do NOT use ST's substituteParams because:
+ * 1. It replaces Ruby/Nate with the ACTIVE CHAT character/persona, not the one we're analyzing
+ * 2. We want full control over what gets substituted
+ * 3. The active chat context is irrelevant to character card analysis
+ *
+ * Supported placeholders:
+ * - {{original_character}} - The character card content
+ * - {{score_results}} - Score stage output
+ * - {{rewrite_results}} / {{current_rewrite}} - Rewrite stage output
+ * - {{current_analysis}} - Analyze stage output
+ * - {{iteration_number}} - Current iteration number
+ * - {{char_name}} - Name of the character being analyzed
+ * - Ruby - Alias for {{char_name}}
+ *
+ * NOT replaced (left as-is for user to see they don't work here):
+ * - Nate - We don't know/care about the user's persona for card analysis
  */
 export function processPromptTemplate(prompt: string, context: TemplateContext): string {
     const { lodash } = SillyTavern.libs;
 
-    // First, run ST's macro substitution for standard macros
-    const { substituteParams } = SillyTavern.getContext();
-    let processed = substituteParams(prompt);
-
     // Handle conditional blocks first
-    processed = processConditionalBlocks(processed, context);
+    let processed = processConditionalBlocks(prompt, context);
 
-    // Now replace our custom placeholders using lodash.escapeRegExp
+    // Replace our custom placeholders
+    // Order matters for some - do specific ones before generic ones
+
     if (context.originalCharacter !== undefined) {
         processed = processed.replace(
             new RegExp(lodash.escapeRegExp(TEMPLATE_PLACEHOLDERS.ORIGINAL_CHARACTER), 'gi'),
@@ -169,7 +176,7 @@ export function processPromptTemplate(prompt: string, context: TemplateContext):
         );
     }
 
-    // Replace {{char_name}} with our specific character
+    // {{char_name}} - our explicit placeholder
     if (context.charName !== undefined) {
         processed = processed.replace(
             new RegExp(lodash.escapeRegExp(TEMPLATE_PLACEHOLDERS.CHARACTER_NAME), 'gi'),
@@ -177,22 +184,14 @@ export function processPromptTemplate(prompt: string, context: TemplateContext):
         );
     }
 
-    // Replace {{user_name}} with our specific user
-    if (context.userName !== undefined) {
-        processed = processed.replace(
-            new RegExp(lodash.escapeRegExp(TEMPLATE_PLACEHOLDERS.USER_NAME), 'gi'),
-            context.userName,
-        );
-    }
-
-    // IMPORTANT: Also replace {{char}} and {{user}} with our specific names
+    // Ruby - replace with the analyzed character's name, NOT the active chat character
     if (context.charName !== undefined) {
         processed = processed.replace(/\{\{char\}\}/gi, context.charName);
     }
 
-    if (context.userName !== undefined) {
-        processed = processed.replace(/\{\{user\}\}/gi, context.userName);
-    }
+    // NOTE: We intentionally do NOT replace Nate
+    // The user's persona is irrelevant to character card analysis
+    // If someone uses it, they'll see it pass through unchanged, which is correct
 
     return processed;
 }
@@ -249,6 +248,13 @@ export function promptHasPlaceholders(prompt: string): string[] {
         }
     }
 
+    // Also check for Ruby usage
+    if (/\{\{char\}\}/i.test(prompt)) {
+        if (!found.includes('CHARACTER_NAME')) {
+            found.push('CHARACTER_NAME');
+        }
+    }
+
     return found;
 }
 
@@ -277,7 +283,7 @@ export function getUnfilledPlaceholders(prompt: string, stage: StageName, hasSco
                 unfilled.push('{{current_analysis}} - only available during refinement');
                 break;
             // ORIGINAL_CHARACTER is always available if we have a character
-            // CHAR_NAME and USER_NAME are always available
+            // CHAR_NAME is always available
             // ITERATION_NUMBER is always available
         }
     }
@@ -430,6 +436,11 @@ export function validatePromptPreset(preset: Partial<PromptPreset>): PresetValid
             debugLog('info', 'Prompt has {{ but no recognized placeholders', {
                 promptPreview: preset.prompt.substring(0, 100),
             });
+        }
+
+        // Warn if they're using Nate since we don't replace it
+        if (/\{\{user\}\}/i.test(preset.prompt)) {
+            warnings.push('Nate is not replaced in Character Tools - the user persona is not relevant to card analysis');
         }
     }
 

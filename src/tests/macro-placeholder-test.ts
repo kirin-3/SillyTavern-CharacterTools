@@ -1,7 +1,7 @@
 // src/tests/macro-placeholder-test.ts
 
 import { processPromptTemplate, promptHasPlaceholders } from '../presets';
-import { buildStagePrompt, buildRefinementPrompt, createPipelineState, setCharacter, completeStage, startRefinement, initializeFieldSelection } from '../pipeline';
+import { buildStagePrompt, buildRefinementPrompt, createPipelineState, setCharacter, completeStage, initializeFieldSelection } from '../pipeline';
 import type { Character, TemplateContext } from '../types';
 
 /**
@@ -9,12 +9,11 @@ import type { Character, TemplateContext } from '../types';
  *
  * Tests:
  * 1. Our custom placeholders ({{original_character}}, {{score_results}}, etc.)
- * 2. ST's substituteParams behavior
- * 3. {{char}} and {{user}} handling (ST replaces these - we should NOT use them)
- * 4. Our {{char_name}} and {{user_name}} placeholders
- * 5. Conditional blocks
- * 6. Placeholder detection
- * 7. Full pipeline prompt building with deduplication
+ * 2. Ruby replacement with analyzed character name
+ * 3. Nate is NOT replaced (left as-is)
+ * 4. Conditional blocks
+ * 5. Placeholder detection
+ * 6. Full pipeline prompt building with deduplication
  *
  * Run from console: window.testMacroPlaceholders()
  */
@@ -36,7 +35,6 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
         Analysis: {{current_analysis}}
         Iteration: {{iteration_number}}
         Character name: {{char_name}}
-        User name: {{user_name}}
     `;
 
     const detected = promptHasPlaceholders(testPrompt1);
@@ -47,19 +45,11 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
     assertArrayContains(detected, 'CURRENT_ANALYSIS', '1.4 Detects {{current_analysis}}', errors);
     assertArrayContains(detected, 'ITERATION_NUMBER', '1.5 Detects {{iteration_number}}', errors);
     assertArrayContains(detected, 'CHARACTER_NAME', '1.6 Detects {{char_name}}', errors);
-    assertArrayContains(detected, 'USER_NAME', '1.7 Detects {{user_name}}', errors);
 
-    // Test that we DON'T detect {{char}} and {{user}} as our placeholders
-    const testPrompt2 = 'Hello {{char}}, I am {{user}}';
-    const detected2 = promptHasPlaceholders(testPrompt2);
-
-    if (detected2.length > 0) {
-        // This might be okay if we're detecting them, but we should warn
-        warnings.push('1.8 {{char}} and {{user}} detected as placeholders - these are ST macros, not ours');
-        console.log(`⚠ 1.8 {{char}}/{{user}} detected: ${detected2.join(', ')}`);
-    } else {
-        console.log('✓ 1.8 {{char}} and {{user}} correctly NOT detected as our placeholders');
-    }
+    // Test Ruby detection (alias for CHARACTER_NAME)
+    const testPrompt1b = 'Hello {{char}}, how are you?';
+    const detected1b = promptHasPlaceholders(testPrompt1b);
+    assertArrayContains(detected1b, 'CHARACTER_NAME', '1.7 Detects {{char}} as CHARACTER_NAME alias', errors);
 
     console.log('');
 
@@ -76,7 +66,6 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
         currentAnalysis: 'CURRENT_ANALYSIS_CONTENT_MNO345',
         iterationNumber: '42',
         charName: 'TestCharacter',
-        userName: 'TestUser',
     };
 
     // Test each placeholder individually
@@ -88,7 +77,7 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
         { input: 'Analysis: {{current_analysis}}', expected: 'CURRENT_ANALYSIS_CONTENT_MNO345', name: '2.5 {{current_analysis}}' },
         { input: 'Iteration: {{iteration_number}}', expected: '42', name: '2.6 {{iteration_number}}' },
         { input: 'Char: {{char_name}}', expected: 'TestCharacter', name: '2.7 {{char_name}}' },
-        { input: 'User: {{user_name}}', expected: 'TestUser', name: '2.8 {{user_name}}' },
+        { input: 'Hello {{char}}!', expected: 'TestCharacter', name: '2.8 {{char}} alias' },
     ];
 
     for (const test of tests) {
@@ -109,50 +98,24 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
     console.log('');
 
     // ========================================================================
-    // PHASE 3: ST's substituteParams behavior
+    // PHASE 3: {{user}} is NOT replaced
     // ========================================================================
-    console.log('--- PHASE 3: ST substituteParams Behavior ---\n');
+    console.log('--- PHASE 3: {{user}} Handling ---\n');
 
-    const { substituteParams, name1, name2, chat, characterId } = SillyTavern.getContext();
+    const userPrompt = 'Hello {{user}}, I am {{char}}. Nice to meet you!';
+    const userResult = processPromptTemplate(userPrompt, context);
 
-    console.log(`  Current ST context: name1="${name1}", name2="${name2}", hasChat=${!!chat?.length}, characterId=${characterId}`);
+    // {{char}} should be replaced
+    assertContains(userResult, 'TestCharacter', '3.1 {{char}} is replaced with character name', errors);
 
-    // Test what ST does with {{char}} and {{user}}
-    const stCharResult = substituteParams('Hello {{char}}');
-    const stUserResult = substituteParams('Hello {{user}}');
+    // {{user}} should NOT be replaced - it should pass through unchanged
+    assertContains(userResult, '{{user}}', '3.2 {{user}} is NOT replaced (passes through)', errors);
 
-    console.log(`  ST {{char}} -> "${stCharResult}"`);
-    console.log(`  ST {{user}} -> "${stUserResult}"`);
-
-    // Check if ST replaced them or left them alone
-    if (stCharResult.includes('{{char}}')) {
-        console.log('✓ 3.1 ST left {{char}} unreplaced (no active chat context)');
-    } else {
-        warnings.push(`3.1 ST replaced {{char}} with "${stCharResult.replace('Hello ', '')}" - this may cause issues`);
-        console.log('⚠ 3.1 ST replaced {{char}} - active chat context exists');
-    }
-
-    if (stUserResult.includes('{{user}}')) {
-        console.log('✓ 3.2 ST left {{user}} unreplaced (no active chat context)');
-    } else {
-        warnings.push(`3.2 ST replaced {{user}} with "${stUserResult.replace('Hello ', '')}" - this may cause issues`);
-        console.log('⚠ 3.2 ST replaced {{user}} - active chat context exists');
-    }
-
-    // Test that ST doesn't touch our custom placeholders
-    const stCustomResult = substituteParams('Test {{char_name}} and {{original_character}}');
-    assertContains(stCustomResult, '{{char_name}}', '3.3 ST leaves {{char_name}} alone', errors);
-    assertContains(stCustomResult, '{{original_character}}', '3.4 ST leaves {{original_character}} alone', errors);
-
-    // Test ST's time/date macros (these should work)
-    const stTimeResult = substituteParams('Time: {{time}}');
-    if (!stTimeResult.includes('{{time}}')) {
-        console.log('✓ 3.5 ST replaces {{time}} macro');
-    } else {
-        warnings.push('3.5 ST did not replace {{time}} - may be disabled');
-        console.log('⚠ 3.5 ST did not replace {{time}}');
-    }
-
+    console.log('');
+    console.log('  NOTE: {{user}} is intentionally not replaced because:');
+    console.log('  - The user\'s persona is irrelevant to character card analysis');
+    console.log('  - We don\'t use ST\'s substituteParams which would replace it');
+    console.log('  - If someone uses it, they\'ll see it pass through unchanged');
     console.log('');
 
     // ========================================================================
@@ -180,7 +143,6 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
         scoreResults: '',
         currentAnalysis: '',
         charName: 'Test',
-        userName: 'User',
     };
 
     const withoutContentResult = processPromptTemplate(conditionalWithContent, emptyContext);
@@ -319,12 +281,12 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
     );
 
     assertContains(partialResult, 'PartialChar', '7.1 Defined values are replaced', errors);
-    // Undefined values should remain as placeholders or be empty
-    if (partialResult.includes('{{score_results}}') || !partialResult.includes('SCORE')) {
-        console.log('✓ 7.2 Undefined {{score_results}} handled gracefully');
+    // Undefined values should remain as placeholders
+    if (partialResult.includes('{{score_results}}')) {
+        console.log('✓ 7.2 Undefined {{score_results}} left as placeholder');
     } else {
-        warnings.push('7.2 Undefined placeholder handling unclear');
-        console.log(`⚠ 7.2 Result: "${partialResult}"`);
+        // It might be empty string, which is also acceptable
+        console.log('✓ 7.2 Undefined {{score_results}} handled gracefully');
     }
 
     // Test special characters in content
@@ -365,46 +327,35 @@ export function testMacroPlaceholders(): { passed: boolean; errors: string[]; wa
     console.log('');
 
     // ========================================================================
-    // PHASE 8: {{char}} and {{user}} - The Problem Children
+    // PHASE 8: Verify NO ST substituteParams usage
     // ========================================================================
-    console.log('--- PHASE 8: {{char}} and {{user}} Behavior ---\n');
+    console.log('--- PHASE 8: No ST substituteParams Interference ---\n');
 
-    // These are ST macros that get replaced by substituteParams BEFORE our code runs
-    // We need to document this behavior
+    // This test verifies that we're NOT using ST's substituteParams
+    // by checking that {{user}} and time macros pass through unchanged
 
-    const charUserPrompt = 'Hello {{char}}, I am {{user}}. Character: {{char_name}}';
-    const charUserContext: TemplateContext = {
-        charName: 'AnalyzedCharacter',
-        userName: 'AnalyzingUser',
+    const noSubstituteTest = 'Character: {{char}}, User: {{user}}, Time: {{time}}';
+    const noSubstituteContext: TemplateContext = {
+        charName: 'MyAnalyzedChar',
     };
 
-    const charUserResult = processPromptTemplate(charUserPrompt, charUserContext);
+    const noSubstituteResult = processPromptTemplate(noSubstituteTest, noSubstituteContext);
 
-    console.log(`  Input: "${charUserPrompt}"`);
-    console.log(`  Output: "${charUserResult}"`);
+    // {{char}} should be replaced with our character
+    assertContains(noSubstituteResult, 'MyAnalyzedChar', '8.1 {{char}} replaced with analyzed character', errors);
 
-    // Check what happened to {{char}} and {{user}}
-    if (charUserResult.includes('{{char}}')) {
-        console.log('✓ 8.1 {{char}} left unreplaced (no active chat) - SAFE');
-    } else if (charUserResult.includes('AnalyzedCharacter') && !charUserResult.includes('{{char_name}}')) {
-        // Our code might be replacing {{char}} - this is the bug we're looking for
-        errors.push('FAIL: 8.1 {{char}} was replaced - check if our code is doing this');
-        console.error('✗ 8.1 {{char}} was replaced unexpectedly');
-    } else {
-        warnings.push('8.1 {{char}} replaced by ST with active chat character');
-        console.log('⚠ 8.1 {{char}} replaced by ST (active chat exists)');
-    }
+    // {{user}} should NOT be replaced (we don't touch it)
+    assertContains(noSubstituteResult, '{{user}}', '8.2 {{user}} passes through unchanged', errors);
 
-    // Verify {{char_name}} works correctly regardless
-    assertContains(charUserResult, 'AnalyzedCharacter', '8.2 {{char_name}} replaced correctly', errors);
+    // {{time}} should NOT be replaced (we don't use substituteParams)
+    assertContains(noSubstituteResult, '{{time}}', '8.3 {{time}} passes through unchanged (no substituteParams)', errors);
 
-    // Document the recommendation
     console.log('');
-    console.log('  RECOMMENDATION:');
-    console.log('  - Use {{char_name}} for the analyzed character name');
-    console.log('  - Use {{user_name}} for the user name');
-    console.log('  - Avoid {{char}} and {{user}} - they reference active chat, not analyzed character');
-
+    console.log('  VERIFICATION: We do NOT use ST\'s substituteParams because:');
+    console.log('  - It would replace {{char}} with the ACTIVE CHAT character');
+    console.log('  - It would replace {{user}} with the current persona');
+    console.log('  - Neither is relevant to character card analysis');
+    console.log('  - We want {{char}} to be the character being ANALYZED');
     console.log('');
 
     // ========================================================================

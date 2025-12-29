@@ -421,6 +421,12 @@ export interface CharacterSessionData {
   activeSessionId: string | null;
 }
 
+/**
+ * Context for template placeholder replacement.
+ *
+ * NOTE: No userName - we don't replace {{user}} because the user's persona
+ * is irrelevant to character card analysis.
+ */
 export interface TemplateContext {
     originalCharacter?: string;
     scoreResults?: string;
@@ -429,5 +435,4 @@ export interface TemplateContext {
     currentAnalysis?: string;
     iterationNumber?: string;
     charName?: string;
-    userName?: string;
 }

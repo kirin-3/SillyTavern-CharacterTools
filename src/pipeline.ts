@@ -702,7 +702,7 @@ export function buildStagePrompt(state: PipelineState, stage: StageName): string
     );
 
     // Build context for placeholder substitution
-    const { name1 } = SillyTavern.getContext();
+    // NOTE: No userName - we don't replace {{user}}
     const context = {
         originalCharacter: characterSummary,
         scoreResults: state.results.score?.response || '',
@@ -711,7 +711,6 @@ export function buildStagePrompt(state: PipelineState, stage: StageName): string
         currentAnalysis: state.results.analyze?.response || '',
         iterationNumber: String(state.iterationCount + 1),
         charName: state.character.name,
-        userName: name1 || 'User',
     };
 
     // Substitute any placeholders in user's prompt
@@ -778,7 +777,7 @@ export function buildRefinementPrompt(state: PipelineState): string | null {
         state.selectedFields,
     );
 
-    const { name1 } = SillyTavern.getContext();
+    // NOTE: No userName - we don't replace {{user}}
     const context = {
         originalCharacter: characterSummary,
         scoreResults: state.results.score?.response || '',
@@ -787,7 +786,6 @@ export function buildRefinementPrompt(state: PipelineState): string | null {
         currentAnalysis: state.results.analyze.response,
         iterationNumber: String(state.iterationCount + 1),
         charName: state.character.name,
-        userName: name1 || 'User',
     };
 
     // Substitute placeholders

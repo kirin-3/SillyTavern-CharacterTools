@@ -110,7 +110,7 @@ export async function runStageGeneration(
         };
     }
 
-    // Build prompt
+    // Build prompt - this already processes our placeholders via processPromptTemplate
     const userPrompt = buildStagePrompt(state, stage);
     if (!userPrompt) {
         return { success: false, error: 'No prompt configured for this stage' };
@@ -119,12 +119,6 @@ export async function runStageGeneration(
     // Get schema if structured output is enabled
     const config = state.configs[stage];
     const jsonSchema = config.useStructuredOutput ? getStageSchema(state, stage) : null;
-
-    // Substitute character placeholders in the prompt
-    const processedPrompt = substituteCharacterPlaceholders(
-        userPrompt,
-        state.character.name,
-    );
 
     // Get full system prompt for this stage
     const systemPrompt = getFullSystemPrompt(stage);
@@ -136,7 +130,7 @@ export async function runStageGeneration(
         useCurrentSettings: settings.useCurrentSettings,
         useStructured: !!jsonSchema,
         schemaName: jsonSchema?.name,
-        promptLength: processedPrompt.length,
+        promptLength: userPrompt.length,
         systemPromptLength: systemPrompt.length,
         apiSource: apiInfo.source,
         apiModel: apiInfo.model,
@@ -144,7 +138,7 @@ export async function runStageGeneration(
 
     const result = await executeGeneration(
         systemPrompt,
-        processedPrompt,
+        userPrompt,
         jsonSchema,
         signal,
         settings.useCurrentSettings,
@@ -190,17 +184,11 @@ export async function runRefinementGeneration(
         };
     }
 
-    // Build refinement prompt
+    // Build refinement prompt - already processes our placeholders
     const userPrompt = buildRefinementPrompt(state);
     if (!userPrompt) {
         return { success: false, error: 'Failed to build refinement prompt' };
     }
-
-    // Substitute character placeholders
-    const processedPrompt = substituteCharacterPlaceholders(
-        userPrompt,
-        state.character.name,
-    );
 
     // Get system prompt (use 'rewrite' stage additions for refinement)
     const systemPrompt = getFullSystemPrompt('rewrite');
@@ -208,13 +196,13 @@ export async function runRefinementGeneration(
     debugLog('info', 'Starting refinement generation', {
         iteration: state.iterationCount + 1,
         character: state.character.name,
-        promptLength: processedPrompt.length,
+        promptLength: userPrompt.length,
     });
 
     // Refinement doesn't use structured output
     return await executeGeneration(
         systemPrompt,
-        processedPrompt,
+        userPrompt,
         null,
         signal,
         settings.useCurrentSettings,
@@ -354,7 +342,11 @@ async function executeGeneration(
 
 /**
  * Generate using ST's current API settings via generateRaw.
- * Uses string prompt + systemPrompt for maximum cross-API compatibility.
+ *
+ * IMPORTANT: We do NOT use substituteParams here. Our prompts are already
+ * processed by processPromptTemplate which handles our placeholders.
+ * Using substituteParams would incorrectly replace Ruby/Nate with
+ * the active chat character/persona instead of the character being analyzed.
  */
 async function generateWithCurrentSettings(
     systemPrompt: string,
@@ -362,19 +354,17 @@ async function generateWithCurrentSettings(
     jsonSchema: StructuredOutputSchema | null,
     signal?: AbortSignal,
 ): Promise<string> {
-    const { generateRaw, substituteParams } = SillyTavern.getContext();
+    const { generateRaw } = SillyTavern.getContext();
 
     // Validate generateRaw is available
     if (typeof generateRaw !== 'function') {
         throw new Error('generateRaw not available - SillyTavern version may be incompatible');
     }
 
-    const processedSystemPrompt = substituteParams(systemPrompt);
-
     debugLog('request', 'generateRaw request', {
         hasSchema: !!jsonSchema,
         schemaName: jsonSchema?.name,
-        systemPromptLength: processedSystemPrompt.length,
+        systemPromptLength: systemPrompt.length,
         userPromptLength: userPrompt.length,
     });
 
@@ -382,12 +372,11 @@ async function generateWithCurrentSettings(
         throw new DOMException('Aborted', 'AbortError');
     }
 
-    // Use string prompt + systemPrompt option for better cross-API compatibility
-    // Some APIs (like Vertex AI) handle message arrays differently
-    // The systemPrompt option is more universally supported
+    // Pass prompts directly - NO substituteParams
+    // Our placeholders are already processed by processPromptTemplate
     const rawResponse = await generateRaw({
         prompt: userPrompt,
-        systemPrompt: processedSystemPrompt,
+        systemPrompt: systemPrompt,
         jsonSchema: jsonSchema ?? undefined,
     });
 
@@ -418,7 +407,7 @@ async function generateWithCustomSettings(
     jsonSchema: StructuredOutputSchema | null,
     signal?: AbortSignal,
 ): Promise<string> {
-    const { ChatCompletionService, substituteParams } = SillyTavern.getContext();
+    const { ChatCompletionService } = SillyTavern.getContext();
     const settings = getSettings();
     const config = settings.generationConfig;
 
@@ -427,14 +416,12 @@ async function generateWithCustomSettings(
         throw new Error('ChatCompletionService not available - falling back may be needed');
     }
 
-    const processedSystemPrompt = substituteParams(systemPrompt);
-
     // Build request options - these are somewhat OpenAI-compatible
     // Other APIs may require different parameters
     const requestOptions: Record<string, unknown> = {
         stream: true,
         messages: [
-            { role: 'system', content: processedSystemPrompt },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
         ],
         chat_completion_source: config.source,
@@ -535,7 +522,6 @@ async function generateWithCustomSettings(
 
     return response;
 }
-
 
 /**
  * Consume a streaming generator and return the final accumulated text
@@ -725,15 +711,4 @@ function ensureString(value: unknown): string {
         }
     }
     return String(value);
-}
-
-/**
- * Replace {{char}} and {{user}} placeholders with actual names.
- */
-function substituteCharacterPlaceholders(
-    text: string,
-    charName: string,
-): string {
-    return text
-        .replace(/\{\{char\}\}/gi, charName);
 }
