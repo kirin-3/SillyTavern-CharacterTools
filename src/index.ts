@@ -8,6 +8,7 @@ import { debugLog, logError } from './debug';
 import { VERSION } from './constants';
 import { testPipelineFlow } from './tests/pipeline-flow-test';
 import { testMacroPlaceholders } from './tests/macro-placeholder-test';
+import { testSessionPersistence } from './tests/session-persistence-test';
 
 function init(): void {
     try {
@@ -20,7 +21,8 @@ function init(): void {
         if (getSettings().debugMode) {
             (window as unknown as { testPipelineFlow: typeof testPipelineFlow }).testPipelineFlow = testPipelineFlow;
             (window as unknown as { testMacroPlaceholders: typeof testMacroPlaceholders }).testMacroPlaceholders = testMacroPlaceholders;
-            debugLog('info', 'Test utilities loaded: window.testPipelineFlow(), window.testMacroPlaceholders()', null);
+            (window as unknown as { testSessionPersistence: typeof testSessionPersistence }).testSessionPersistence = testSessionPersistence;
+            debugLog('info', 'Test utilities loaded: window.testPipelineFlow(), window.testMacroPlaceholders(), window.testSessionPersistence()', null);
         }
 
         debugLog('info', 'Extension loaded', getSettings());
