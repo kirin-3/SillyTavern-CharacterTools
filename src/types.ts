@@ -420,3 +420,14 @@ export interface CharacterSessionData {
   sessions: PersistedSession[];
   activeSessionId: string | null;
 }
+
+export interface TemplateContext {
+    originalCharacter?: string;
+    scoreResults?: string;
+    rewriteResults?: string;
+    currentRewrite?: string;
+    currentAnalysis?: string;
+    iterationNumber?: string;
+    charName?: string;
+    userName?: string;
+}

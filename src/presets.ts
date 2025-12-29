@@ -9,6 +9,7 @@ import type {
     PromptPreset,
     SchemaPreset,
     StructuredOutputSchema,
+    TemplateContext,
 } from './types';
 import {
     getSettings,
@@ -104,20 +105,6 @@ export function createStageConfigFromDefaults(stage: StageName): StageConfig {
     };
 }
 
-// ============================================================================
-// PROMPT TEMPLATE PROCESSING
-// ============================================================================
-
-export interface TemplateContext {
-    originalCharacter?: string;
-    scoreResults?: string;
-    rewriteResults?: string;
-    currentRewrite?: string;
-    currentAnalysis?: string;
-    iterationNumber?: string;
-    charName?: string;
-    userName?: string;
-}
 
 /**
  * Process a prompt template, replacing placeholders with actual values.

@@ -7,6 +7,7 @@ import { initPanel } from './ui/panel';
 import { debugLog, logError } from './debug';
 import { VERSION } from './constants';
 import { testPipelineFlow } from './tests/pipeline-flow-test';
+import { testMacroPlaceholders } from './tests/macro-placeholder-test';
 
 function init(): void {
     try {
@@ -18,7 +19,8 @@ function init(): void {
         // Load test utilities in debug mode
         if (getSettings().debugMode) {
             (window as unknown as { testPipelineFlow: typeof testPipelineFlow }).testPipelineFlow = testPipelineFlow;
-            debugLog('info', 'Test utilities loaded: window.testPipelineFlow()', null);
+            (window as unknown as { testMacroPlaceholders: typeof testMacroPlaceholders }).testMacroPlaceholders = testMacroPlaceholders;
+            debugLog('info', 'Test utilities loaded: window.testPipelineFlow(), window.testMacroPlaceholders()', null);
         }
 
         debugLog('info', 'Extension loaded', getSettings());
