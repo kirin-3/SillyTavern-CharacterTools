@@ -2358,3 +2358,100 @@
     outline-offset: 2px;
   }
 }
+
+/* ============================================================================
+   ALIGNMENT FIXES - Left align everything
+   ============================================================================ */
+
+.character_tools_popup,
+.character_tools_settings_modal {
+  text-align: left;
+}
+
+.character_tools_char_preview {
+  text-align: left;
+}
+
+.character_tools_char_fields_summary {
+  text-align: left;
+}
+
+.character_tools_field_row {
+  text-align: left;
+}
+
+.character_tools_session_list_summary {
+  text-align: left;
+}
+
+.character_tools_session_item {
+  text-align: left;
+}
+
+.character_tools_iteration_header {
+  text-align: left;
+}
+
+.character_tools_iteration_item {
+  text-align: left;
+}
+
+.character_tools_results_body {
+  text-align: left;
+}
+
+.character_tools_stage_config {
+  text-align: left;
+}
+
+/* Fix hero centering - only center on mobile, left on desktop */
+.character_tools_hero {
+  text-align: left;
+}
+
+@media (max-width: 599px) {
+  .character_tools_hero {
+    text-align: center;
+  }
+}
+
+/* Field expand button */
+.character_tools_field_expand_btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--ct-radius-sm);
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.5;
+  transition: opacity var(--ct-transition), background var(--ct-transition);
+  flex-shrink: 0;
+}
+
+.character_tools_field_expand_btn:hover {
+  opacity: 1;
+  background: var(--SmartThemeBorderColor);
+}
+
+.character_tools_field_expand_btn i {
+  font-size: 0.7em;
+  transition: transform var(--ct-transition);
+}
+
+.character_tools_field_label_text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  font-size: 0.8em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}

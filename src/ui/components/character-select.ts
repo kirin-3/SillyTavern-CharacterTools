@@ -113,13 +113,13 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
             ${selectedCount}/${fields.length} fields • <span id="${MODULE_NAME}_total_tokens">counting...</span>
           </div>
         </div>
-        <button id="${MODULE_NAME}_select_all_fields" class="${MODULE_NAME}_icon_btn" title="Select all fields">
+        <button type="button" id="${MODULE_NAME}_select_all_fields" class="${MODULE_NAME}_icon_btn" title="Select all fields">
           <i class="fa-solid fa-check-double"></i>
         </button>
-        <button id="${MODULE_NAME}_select_none_fields" class="${MODULE_NAME}_icon_btn" title="Deselect all fields">
+        <button type="button" id="${MODULE_NAME}_select_none_fields" class="${MODULE_NAME}_icon_btn" title="Deselect all fields">
           <i class="fa-solid fa-square"></i>
         </button>
-        <button id="${MODULE_NAME}_char_clear" class="${MODULE_NAME}_icon_btn" title="Clear selection">
+        <button type="button" id="${MODULE_NAME}_char_clear" class="${MODULE_NAME}_icon_btn" title="Clear selection">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -136,6 +136,7 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
     </div>
   `;
 }
+
 
 
 /**
@@ -165,9 +166,11 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): 
           ${isSelected ? 'checked' : ''}
           ${isAltGreetings ? 'data-is-array="true"' : ''}
         >
-        <label class="${MODULE_NAME}_field_toggle" for="${fieldId}" data-field="${field.key}">
+        <button type="button" class="${MODULE_NAME}_field_expand_btn" data-field="${field.key}" title="Expand/collapse">
           <i class="fa-solid fa-chevron-right"></i>
-          <span class="${MODULE_NAME}_field_label">${field.label}</span>
+        </button>
+        <label class="${MODULE_NAME}_field_label_text" for="${fieldId}">
+          ${field.label}
         </label>
         <span class="${MODULE_NAME}_field_tokens" data-field="${field.key}">...</span>
       </div>
@@ -177,6 +180,8 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): 
     </div>
   `;
 }
+
+
 
 /**
  * Render alternate greetings with individual selection

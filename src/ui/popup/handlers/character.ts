@@ -123,6 +123,7 @@ export function initCharacterSelectListeners(): void {
     });
 
     dropdown.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent bubbling to container
         const item = (e.target as HTMLElement).closest(`.${MODULE_NAME}_dropdown_item`);
         if (item) {
             const index = parseInt(item.getAttribute('data-index') || '-1', 10);
@@ -134,6 +135,7 @@ export function initCharacterSelectListeners(): void {
             }
         }
     });
+
 
     container.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
@@ -161,17 +163,20 @@ export function initCharacterSelectListeners(): void {
             return;
         }
 
-        const toggle = target.closest(`.${MODULE_NAME}_field_toggle`);
-        if (toggle) {
-            const fieldKey = toggle.getAttribute('data-field');
+        const expandBtn = target.closest(`.${MODULE_NAME}_field_expand_btn`);
+        if (expandBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const fieldKey = expandBtn.getAttribute('data-field');
             const content = container.querySelector(`#${MODULE_NAME}_field_content_${fieldKey}`);
-            const icon = toggle.querySelector('i');
+            const icon = expandBtn.querySelector('i');
 
             if (content && icon) {
                 content.classList.toggle('hidden');
                 icon.classList.toggle('fa-chevron-right');
                 icon.classList.toggle('fa-chevron-down');
             }
+            return;
         }
     });
 
