@@ -19,6 +19,11 @@ export function renderSessionManager(
 ): string {
     const { moment } = SillyTavern.libs;
 
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const summaryText = activeSession
+        ? `${activeSession.label}`
+        : `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`;
+
     return `
     <div class="${MODULE_NAME}_session_manager" id="${MODULE_NAME}_session_manager">
       <div class="${MODULE_NAME}_session_header">
@@ -37,24 +42,30 @@ export function renderSessionManager(
         </div>
       </div>
 
-      <div class="${MODULE_NAME}_session_list" id="${MODULE_NAME}_session_list">
-        ${sessions.length === 0
+      <details class="${MODULE_NAME}_session_list_details" ${sessions.length > 0 ? 'open' : ''}>
+        <summary class="${MODULE_NAME}_session_list_summary">
+          <span>${summaryText}</span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </summary>
+        <div class="${MODULE_NAME}_session_list" id="${MODULE_NAME}_session_list">
+          ${sessions.length === 0
         ? `<div class="${MODULE_NAME}_session_empty">No saved sessions</div>`
         : sessions.map(s => renderSessionItem(s, s.id === activeSessionId, moment)).join('')
 }
-      </div>
-
-      ${sessions.length > 0 ? `
-        <div class="${MODULE_NAME}_session_footer">
-          <button id="${MODULE_NAME}_clear_all_sessions_btn" class="menu_button menu_button_icon" title="Delete all sessions for this character">
-            <i class="fa-solid fa-trash"></i>
-            <span>Clear All</span>
-          </button>
         </div>
-      ` : ''}
+        ${sessions.length > 0 ? `
+          <div class="${MODULE_NAME}_session_footer">
+            <button id="${MODULE_NAME}_clear_all_sessions_btn" class="menu_button menu_button_icon" title="Delete all sessions for this character">
+              <i class="fa-solid fa-trash"></i>
+              <span>Clear All</span>
+            </button>
+          </div>
+        ` : ''}
+      </details>
     </div>
   `;
 }
+
 
 /**
  * Render a single session item
@@ -147,12 +158,21 @@ export function updateSessionManagerState(
     if (!manager) return;
 
     // Update unsaved indicator
+    const title = manager.querySelector(`.${MODULE_NAME}_session_title`);
     const indicator = manager.querySelector(`.${MODULE_NAME}_unsaved_indicator`);
-    if (hasUnsavedChanges && !indicator) {
-        const title = manager.querySelector(`.${MODULE_NAME}_session_title`);
-        title?.insertAdjacentHTML('beforeend', `<span class="${MODULE_NAME}_unsaved_indicator" title="Unsaved changes">●</span>`);
+    if (hasUnsavedChanges && !indicator && title) {
+        title.insertAdjacentHTML('beforeend', `<span class="${MODULE_NAME}_unsaved_indicator" title="Unsaved changes">●</span>`);
     } else if (!hasUnsavedChanges && indicator) {
         indicator.remove();
+    }
+
+    // Update summary text
+    const summary = manager.querySelector(`.${MODULE_NAME}_session_list_summary span`);
+    if (summary) {
+        const activeSession = sessions.find(s => s.id === activeSessionId);
+        summary.textContent = activeSession
+            ? activeSession.label
+            : `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`;
     }
 
     // Update session list
@@ -170,9 +190,11 @@ export function updateSessionManagerState(
     }
 
     // Update footer visibility
+    const details = manager.querySelector(`.${MODULE_NAME}_session_list_details`);
     const footer = manager.querySelector(`.${MODULE_NAME}_session_footer`);
-    if (sessions.length > 0 && !footer) {
-        manager.insertAdjacentHTML('beforeend', `
+
+    if (sessions.length > 0 && !footer && details) {
+        details.insertAdjacentHTML('beforeend', `
       <div class="${MODULE_NAME}_session_footer">
         <button id="${MODULE_NAME}_clear_all_sessions_btn" class="menu_button menu_button_icon" title="Delete all sessions for this character">
           <i class="fa-solid fa-trash"></i>
@@ -184,6 +206,7 @@ export function updateSessionManagerState(
         footer.remove();
     }
 }
+
 
 // ============================================================================
 // UTILITIES

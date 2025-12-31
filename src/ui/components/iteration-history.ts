@@ -11,9 +11,6 @@ import type { IterationSnapshot, IterationVerdict } from '../../types';
 
 /**
  * Render the iteration history panel
- * @param history - Array of iteration snapshots
- * @param currentIteration - Current iteration number
- * @param historyLoaded - Whether history has been loaded from persistence
  */
 export function renderIterationHistory(
     history: IterationSnapshot[],
@@ -24,22 +21,26 @@ export function renderIterationHistory(
         return '';
     }
 
-    // Show loading state while history is being loaded from localforage
-    const listContent = !historyLoaded
-        ? `<div class="${MODULE_NAME}_iteration_loading">
+    // Show loading state while history is being loaded
+    let listContent: string;
+    if (!historyLoaded) {
+        listContent = `<div class="${MODULE_NAME}_iteration_loading">
              <i class="fa-solid fa-spinner fa-spin"></i>
              <span>Loading history...</span>
-           </div>`
-        : history.length === 0
-            ? `<div class="${MODULE_NAME}_iteration_empty">No previous iterations</div>`
-            : history.map((snap, i) => renderIterationItem(snap, i)).join('');
+           </div>`;
+    } else if (history.length === 0) {
+        listContent = `<div class="${MODULE_NAME}_iteration_empty">No previous iterations</div>`;
+    } else {
+        listContent = history.map((snap, i) => renderIterationItem(snap, i)).join('');
+    }
 
     return `
     <div class="${MODULE_NAME}_iteration_history" id="${MODULE_NAME}_iteration_history">
-      <div class="${MODULE_NAME}_iteration_header">
+      <div class="${MODULE_NAME}_iteration_header" id="${MODULE_NAME}_iteration_header_toggle">
         <i class="fa-solid fa-clock-rotate-left"></i>
         <span>Iteration History</span>
-        <span class="${MODULE_NAME}_iteration_count">${currentIteration > 0 ? `Current: #${currentIteration + 1}` : 'Initial'}</span>
+        <span class="${MODULE_NAME}_iteration_count">${currentIteration > 0 ? `#${currentIteration + 1}` : 'Initial'}</span>
+        <i class="fa-solid fa-chevron-down ${MODULE_NAME}_iteration_header_icon"></i>
       </div>
       <div class="${MODULE_NAME}_iteration_list">
         ${listContent}
@@ -47,6 +48,7 @@ export function renderIterationHistory(
     </div>
   `;
 }
+
 
 function renderIterationItem(snap: IterationSnapshot, index: number): string {
     const verdictIcon = getVerdictIcon(snap.verdict);
@@ -129,11 +131,13 @@ export function updateIterationHistoryState(
         // Need to add history panel
         const html = renderIterationHistory(history, currentIteration, historyLoaded);
         container.insertAdjacentHTML('beforeend', html);
+        // Attach collapse listener to the new element
+        attachCollapseListener(container);
     } else if (historyEl) {
         // Update existing
         const countEl = historyEl.querySelector(`.${MODULE_NAME}_iteration_count`);
         if (countEl) {
-            countEl.textContent = currentIteration > 0 ? `Current: #${currentIteration + 1}` : 'Initial';
+            countEl.textContent = currentIteration > 0 ? `#${currentIteration + 1}` : 'Initial';
         }
 
         const listEl = historyEl.querySelector(`.${MODULE_NAME}_iteration_list`);
@@ -149,6 +153,20 @@ export function updateIterationHistoryState(
                 listEl.innerHTML = history.map((snap, i) => renderIterationItem(snap, i)).join('');
             }
         }
+    }
+}
+
+/**
+ * Attach collapse toggle listener to iteration history header
+ */
+function attachCollapseListener(container: HTMLElement): void {
+    const header = container.querySelector(`#${MODULE_NAME}_iteration_header_toggle`);
+    const historyEl = container.querySelector(`#${MODULE_NAME}_iteration_history`);
+
+    if (header && historyEl) {
+        header.addEventListener('click', () => {
+            historyEl.classList.toggle('collapsed');
+        });
     }
 }
 

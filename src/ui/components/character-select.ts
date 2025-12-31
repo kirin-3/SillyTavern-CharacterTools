@@ -124,12 +124,19 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
         </button>
       </div>
 
-      <div class="${MODULE_NAME}_char_fields">
-        ${fields.map(f => renderFieldRow(f, selectedFields)).join('')}
-      </div>
+      <details class="${MODULE_NAME}_char_fields_details" open>
+        <summary class="${MODULE_NAME}_char_fields_summary">
+          <span>${fields.length} character fields</span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </summary>
+        <div class="${MODULE_NAME}_char_fields">
+          ${fields.map(f => renderFieldRow(f, selectedFields)).join('')}
+        </div>
+      </details>
     </div>
   `;
 }
+
 
 /**
  * Render a single field row with selection checkbox

@@ -22,7 +22,15 @@ export function initIterationHistoryListeners(): void {
     container.addEventListener('click', async (e) => {
         const target = e.target as HTMLElement;
 
-        // Revert button (was restore)
+        // Collapse toggle
+        const header = target.closest(`#${MODULE_NAME}_iteration_header_toggle`);
+        if (header) {
+            const historyEl = container.querySelector(`#${MODULE_NAME}_iteration_history`);
+            historyEl?.classList.toggle('collapsed');
+            return;
+        }
+
+        // Revert button
         const revertBtn = target.closest(`.${MODULE_NAME}_iteration_revert_btn`);
         if (revertBtn) {
             const index = parseInt(revertBtn.getAttribute('data-index') || '-1', 10);
@@ -43,6 +51,7 @@ export function initIterationHistoryListeners(): void {
         }
     });
 }
+
 
 // ============================================================================
 // HANDLERS
