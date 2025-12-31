@@ -539,18 +539,22 @@
 }
 
 .character_tools_field_row {
-  border-bottom: 1px solid var(--SmartThemeBorderColor);
+  border: 1px solid var(--SmartThemeBorderColor);
+  border-radius: var(--ct-radius-sm);
+  background: var(--SmartThemeBlurTintColor);
+  overflow: hidden;
+  margin-bottom: var(--ct-gap-xs);
 }
 
 .character_tools_field_row:last-child {
-  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .character_tools_field_header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 8px;
+  padding: 6px 8px;
   cursor: pointer;
   transition: background var(--ct-transition);
   font-size: 0.8em;
@@ -558,7 +562,7 @@
 }
 
 .character_tools_field_header:hover {
-  background: var(--SmartThemeBlurTintColor);
+  background: var(--SmartThemeChatTintColor);
 }
 
 .character_tools_field_header i {
@@ -573,35 +577,18 @@
   flex-shrink: 0;
 }
 
-.character_tools_field_toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--ct-gap-xs);
-  flex: 1;
-  min-width: 0;
-}
-
-.character_tools_field_label {
-  font-weight: 500;
-  text-align: start;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .character_tools_field_tokens {
-  font-size: 0.7em;
-  opacity: 0.7;
+  font-size: 0.75em;
+  opacity: 0.6;
   font-family: var(--monoFontFamily);
-  text-align: end;
-  flex-shrink: 0;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .character_tools_field_content {
-  padding: 6px 8px;
-  padding-left: 28px;
-  background: var(--SmartThemeBlurTintColor);
+  background: var(--SmartThemeChatTintColor);
+  border-top: 1px solid var(--SmartThemeBorderColor);
+  padding: 10px;
 }
 
 .character_tools_field_content.hidden {
@@ -614,7 +601,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
-  max-height: 150px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -632,31 +619,25 @@
   border-radius: var(--ct-radius-sm);
   cursor: pointer;
   color: inherit;
-  opacity: 0.5;
-  transition: opacity var(--ct-transition), background var(--ct-transition);
+  opacity: 0.7;
+  transition: opacity var(--ct-transition);
   flex-shrink: 0;
 }
 
 .character_tools_field_expand_btn:hover {
   opacity: 1;
-  background: var(--SmartThemeBorderColor);
 }
 
 .character_tools_field_expand_btn i {
-  font-size: 0.7em;
+  font-size: 0.8em;
   transition: transform var(--ct-transition);
 }
 
 .character_tools_field_label_text {
-  flex: 1;
-  min-width: 0;
   font-weight: 500;
-  font-size: 0.8em;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
+  font-size: 0.85em;
+  color: var(--SmartThemeQuoteColor);
+  flex-shrink: 0;
 }
 
 /* Alt greeting expandable items */
