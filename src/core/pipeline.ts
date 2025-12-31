@@ -397,7 +397,12 @@ export function completeStage(
  * Mark a stage as failed (resets to pending)
  */
 export function failStage(state: PipelineState, stage: StageName, error: string): PipelineState {
-    debugLog('error', 'Stage failed', { stage, error });
+    // Don't log cancellation as an error - it's expected behavior
+    if (error === 'Generation cancelled') {
+        debugLog('info', 'Stage cancelled', { stage });
+    } else {
+        debugLog('error', 'Stage failed', { stage, error });
+    }
 
     return {
         ...state,
