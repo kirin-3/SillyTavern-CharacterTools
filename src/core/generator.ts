@@ -567,14 +567,10 @@ async function consumeStreamGenerator(
         generator = generatorFn();
 
         for await (const chunk of generator) {
+            // CHANGED: Check abort at start of every chunk
             if (signal?.aborted) {
-                debugLog('info', 'Stream aborted', { textSoFar: finalText.length });
-                try {
-                    await generator.return(undefined);
-                } catch {
-                    // Ignore errors during cleanup
-                }
-                throw new DOMException('Aborted', 'AbortError');
+                debugLog('info', 'Stream aborted at chunk start', { textSoFar: finalText.length });
+                break;  // Exit loop immediately, cleanup below
             }
 
             if (typeof chunk === 'string') {
@@ -597,6 +593,16 @@ async function consumeStreamGenerator(
                     throw new Error(errorMsg);
                 }
             }
+        }
+
+        // CHANGED: Cleanup generator if aborted
+        if (signal?.aborted && generator) {
+            try {
+                await generator.return(undefined);
+            } catch {
+                // Ignore cleanup errors
+            }
+            throw new DOMException('Aborted', 'AbortError');
         }
     } catch (err) {
         if ((err as Error).name === 'AbortError') {

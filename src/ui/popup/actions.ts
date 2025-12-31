@@ -90,6 +90,7 @@ import type { Character, StageName, PopulatedField } from '../../types';
 
 let abortController: AbortController | null = null;
 let autoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+
 let isSelectingCharacter = false;
 
 // ============================================================================
@@ -504,7 +505,7 @@ export async function resetCurrentPipeline(): Promise<void> {
 
 export async function runSingleStage(stage: StageName): Promise<void> {
     const state = getState();
-    if (!state || state.isGenerating || state.isRefining) return;
+    if (!state || state.isGenerating || state.isRefining) return; // NEW: Reset flag
 
     if (!isApiReady()) {
         toastr.error('API is not connected');
@@ -758,6 +759,11 @@ export async function runRefinement(): Promise<void> {
 export function cancelGeneration(): void {
     if (abortController) {
         abortController.abort();
+    }
+    // NEW: Also call stopGeneration directly for immediate effect
+    const { stopGeneration } = SillyTavern.getContext();
+    if (typeof stopGeneration === 'function') {
+        stopGeneration();
     }
 }
 
