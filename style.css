@@ -618,6 +618,47 @@
   overflow-y: auto;
 }
 
+/* Field expand button */
+.character_tools_field_expand_btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--ct-radius-sm);
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.5;
+  transition: opacity var(--ct-transition), background var(--ct-transition);
+  flex-shrink: 0;
+}
+
+.character_tools_field_expand_btn:hover {
+  opacity: 1;
+  background: var(--SmartThemeBorderColor);
+}
+
+.character_tools_field_expand_btn i {
+  font-size: 0.7em;
+  transition: transform var(--ct-transition);
+}
+
+.character_tools_field_label_text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  font-size: 0.8em;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
 /* Alt Greetings */
 .character_tools_alt_greetings {
   display: flex;
@@ -647,12 +688,93 @@
   color: var(--SmartThemeQuoteColor);
 }
 
+/* Alt greeting expandable items */
+.character_tools_alt_greetings {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.character_tools_alt_greeting_item {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--ct-radius-sm);
+    background: var(--SmartThemeBlurTintColor);
+    overflow: hidden;
+}
+
+.character_tools_alt_greeting_header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: background var(--ct-transition);
+}
+
+.character_tools_alt_greeting_header:hover {
+    background: var(--SmartThemeChatTintColor);
+}
+
+.character_tools_alt_greeting_header input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
+.character_tools_alt_greeting_expand_btn {
+    background: none;
+    border: none;
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    padding: 2px 6px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+}
+
+.character_tools_alt_greeting_expand_btn:hover {
+    opacity: 1;
+}
+
+.character_tools_alt_greeting_label {
+    font-weight: 500;
+    font-size: 0.8em;
+    color: var(--SmartThemeQuoteColor);
+    flex-shrink: 0;
+}
+
+.character_tools_alt_greeting_length {
+    font-size: 0.75em;
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
 .character_tools_alt_greeting_preview {
-  font-size: 0.75em;
-  opacity: 0.7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+    font-size: 0.8em;
+    opacity: 0.7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+.character_tools_alt_greeting_full {
+    font-size: 0.8em;
+    line-height: 1.4;
+    background: var(--SmartThemeChatTintColor);
+    padding: 10px;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+}
+
+.character_tools_alt_greeting_full.hidden,
+.character_tools_alt_greeting_preview.hidden {
+    display: none;
 }
 
 /* ============================================================================
@@ -2405,134 +2527,4 @@
   .character_tools_hero {
     text-align: center;
   }
-}
-
-/* Field expand button */
-.character_tools_field_expand_btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: var(--ct-radius-sm);
-  cursor: pointer;
-  color: inherit;
-  opacity: 0.5;
-  transition: opacity var(--ct-transition), background var(--ct-transition);
-  flex-shrink: 0;
-}
-
-.character_tools_field_expand_btn:hover {
-  opacity: 1;
-  background: var(--SmartThemeBorderColor);
-}
-
-.character_tools_field_expand_btn i {
-  font-size: 0.7em;
-  transition: transform var(--ct-transition);
-}
-
-.character_tools_field_label_text {
-  flex: 1;
-  min-width: 0;
-  font-weight: 500;
-  font-size: 0.8em;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-}
-
-/* Alt greeting expandable items */
-.character_tools_alt_greetings {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.character_tools_alt_greeting_item {
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--ct-radius-sm);
-    background: var(--SmartThemeBlurTintColor);
-    overflow: hidden;
-}
-
-.character_tools_alt_greeting_header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    cursor: pointer;
-    transition: background var(--ct-transition);
-}
-
-.character_tools_alt_greeting_header:hover {
-    background: var(--SmartThemeChatTintColor);
-}
-
-.character_tools_alt_greeting_header input[type="checkbox"] {
-    flex-shrink: 0;
-}
-
-.character_tools_alt_greeting_expand_btn {
-    background: none;
-    border: none;
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-    padding: 2px 6px;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-    flex-shrink: 0;
-}
-
-.character_tools_alt_greeting_expand_btn:hover {
-    opacity: 1;
-}
-
-.character_tools_alt_greeting_label {
-    font-weight: 500;
-    font-size: 0.8em;
-    color: var(--SmartThemeQuoteColor);
-    flex-shrink: 0;
-}
-
-.character_tools_alt_greeting_length {
-    font-size: 0.75em;
-    opacity: 0.6;
-    flex-shrink: 0;
-    margin-left: auto;
-}
-
-.character_tools_alt_greeting_preview {
-    font-size: 0.8em;
-    opacity: 0.7;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0;
-}
-
-.character_tools_alt_greeting_full {
-    font-size: 0.8em;
-    line-height: 1.4;
-    background: var(--SmartThemeChatTintColor);
-    padding: 10px;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: break-word;
-    max-height: 300px;
-    overflow-y: auto;
-    border-top: 1px solid var(--SmartThemeBorderColor);
-}
-
-.character_tools_alt_greeting_full.hidden,
-.character_tools_alt_greeting_preview.hidden {
-    display: none;
 }
