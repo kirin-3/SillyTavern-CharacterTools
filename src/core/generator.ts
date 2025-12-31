@@ -553,6 +553,8 @@ async function generateWithCustomSettings(
     }
 }
 
+// src/core/generator.ts
+
 /**
  * Consume a streaming generator and return the final accumulated text
  */
@@ -566,12 +568,37 @@ async function consumeStreamGenerator(
     try {
         generator = generatorFn();
 
-        for await (const chunk of generator) {
-            // CHANGED: Check abort at start of every chunk
+        while (true) {
             if (signal?.aborted) {
-                debugLog('info', 'Stream aborted at chunk start', { textSoFar: finalText.length });
-                break;  // Exit loop immediately, cleanup below
+                debugLog('info', 'Stream aborted before next chunk', { textSoFar: finalText.length });
+                break;
             }
+
+            // Race the next chunk against the abort signal
+            const nextChunk = generator.next();
+
+            let result: IteratorResult<unknown>;
+
+            if (signal) {
+                // Create a promise that rejects when aborted
+                const abortPromise = new Promise<never>((_, reject) => {
+                    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+                    signal.addEventListener('abort', onAbort, { once: true });
+                    // Clean up if nextChunk resolves first
+                    nextChunk.then(() => signal.removeEventListener('abort', onAbort))
+                        .catch(() => signal.removeEventListener('abort', onAbort));
+                });
+
+                result = await Promise.race([nextChunk, abortPromise]);
+            } else {
+                result = await nextChunk;
+            }
+
+            if (result.done) {
+                break;
+            }
+
+            const chunk = result.value;
 
             if (typeof chunk === 'string') {
                 finalText = chunk;
@@ -595,17 +622,29 @@ async function consumeStreamGenerator(
             }
         }
 
-        // CHANGED: Cleanup generator if aborted
-        if (signal?.aborted && generator) {
+        // Cleanup generator
+        if (generator) {
             try {
                 await generator.return(undefined);
             } catch {
                 // Ignore cleanup errors
             }
+        }
+
+        if (signal?.aborted) {
             throw new DOMException('Aborted', 'AbortError');
         }
+
     } catch (err) {
         if ((err as Error).name === 'AbortError') {
+            // Cleanup generator on abort
+            if (generator) {
+                try {
+                    await generator.return(undefined);
+                } catch {
+                    // Ignore cleanup errors
+                }
+            }
             throw err;
         }
 
@@ -635,6 +674,7 @@ async function consumeStreamGenerator(
     debugLog('info', 'Stream consumed', { finalLength: finalText.length });
     return finalText;
 }
+
 
 // ============================================================================
 // TOKEN ESTIMATION
