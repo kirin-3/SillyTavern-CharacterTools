@@ -659,35 +659,6 @@
   text-align: left;
 }
 
-/* Alt Greetings */
-.character_tools_alt_greetings {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ct-gap-xs);
-}
-
-.character_tools_alt_greeting_item {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.character_tools_alt_greeting_checkbox {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.character_tools_alt_greeting_content {
-  flex: 1;
-  min-width: 0;
-}
-
-.character_tools_alt_greeting_label {
-  font-weight: 500;
-  font-size: 0.75em;
-  color: var(--SmartThemeQuoteColor);
-}
-
 /* Alt greeting expandable items */
 .character_tools_alt_greetings {
     display: flex;
