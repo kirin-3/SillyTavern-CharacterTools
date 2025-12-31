@@ -180,11 +180,13 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
               </label>
               <span class="${MODULE_NAME}_alt_greeting_length">${greeting.length} chars</span>
             </div>
-            <div class="${MODULE_NAME}_alt_greeting_preview">
-              ${escapeHtml(preview)}${truncated ? '...' : ''}
-            </div>
-            <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${contentId}">
-              ${escapeHtml(greeting)}
+            <div class="${MODULE_NAME}_alt_greeting_body">
+              <div class="${MODULE_NAME}_alt_greeting_preview" id="${MODULE_NAME}_alt_greeting_preview_${i}">
+                ${escapeHtml(preview)}${truncated ? '...' : ''}
+              </div>
+              <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${contentId}">
+                ${escapeHtml(greeting)}
+              </div>
             </div>
           </div>
         `;
@@ -192,6 +194,7 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
     </div>
   `;
 }
+
 
 /**
  * Render simple field content

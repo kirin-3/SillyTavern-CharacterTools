@@ -301,23 +301,31 @@ export function expandField(fieldKey: string): void {
     }
 }
 
-// ADD this new action function after expandField:
-
 export function expandAltGreeting(greetingIndex: number): void {
     const el = getElement();
     if (!el) return;
 
+    const preview = el.querySelector(`#${MODULE_NAME}_alt_greeting_preview_${greetingIndex}`);
     const content = el.querySelector(`#${MODULE_NAME}_alt_greeting_content_${greetingIndex}`);
-    const preview = content?.previousElementSibling; // The preview div
     const btn = el.querySelector(`.${MODULE_NAME}_alt_greeting_expand_btn[data-greeting-index="${greetingIndex}"]`);
     const icon = btn?.querySelector('i');
 
-    if (content && icon) {
-        const isHidden = content.classList.contains('hidden');
-        content.classList.toggle('hidden');
-        preview?.classList.toggle('hidden', !isHidden); // Hide preview when expanded
-        icon.classList.toggle('fa-chevron-right', !isHidden);
-        icon.classList.toggle('fa-chevron-down', isHidden);
+    if (preview && content && icon) {
+        const isExpanded = !content.classList.contains('hidden');
+
+        if (isExpanded) {
+            // Collapse: show preview, hide full
+            content.classList.add('hidden');
+            preview.classList.remove('hidden');
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-right');
+        } else {
+            // Expand: hide preview, show full
+            preview.classList.add('hidden');
+            content.classList.remove('hidden');
+            icon.classList.remove('fa-chevron-right');
+            icon.classList.add('fa-chevron-down');
+        }
     }
 }
 

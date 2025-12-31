@@ -2449,8 +2449,13 @@
 }
 
 /* Alt greeting expandable items */
+.character_tools_alt_greetings {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
 .character_tools_alt_greeting_item {
-    margin-bottom: 8px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 4px;
     padding: 8px;
@@ -2461,7 +2466,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 4px;
 }
 
 .character_tools_alt_greeting_expand_btn {
@@ -2472,6 +2476,7 @@
     padding: 2px 6px;
     opacity: 0.7;
     transition: opacity 0.2s;
+    flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_expand_btn:hover {
@@ -2482,18 +2487,23 @@
     font-weight: 500;
     color: var(--SmartThemeQuoteColor);
     cursor: pointer;
-    flex: 1;
 }
 
 .character_tools_alt_greeting_length {
     font-size: 0.85em;
     opacity: 0.6;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.character_tools_alt_greeting_body {
+    margin-top: 6px;
+    padding-left: 28px;
 }
 
 .character_tools_alt_greeting_preview {
     font-size: 0.9em;
     opacity: 0.8;
-    padding-left: 52px; /* Align with label after checkbox + expand btn */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2501,13 +2511,16 @@
 
 .character_tools_alt_greeting_full {
     font-size: 0.9em;
-    padding: 8px;
-    padding-left: 52px;
-    background: var(--SmartThemeBlurTintColor);
+    background: rgba(0, 0, 0, 0.2);
     border-radius: 4px;
-    margin-top: 4px;
+    padding: 8px;
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 300px;
     overflow-y: auto;
+}
+
+.character_tools_alt_greeting_full.hidden,
+.character_tools_alt_greeting_preview.hidden {
+    display: none;
 }
