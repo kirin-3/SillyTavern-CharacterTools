@@ -140,7 +140,10 @@ export function updateSessionManagerState(
     const manager = container.querySelector(`#${MODULE_NAME}_session_manager`);
     if (!manager) return;
 
-    // If loading, just show loading state
+    // Check if we're transitioning from loading state
+    const wasLoading = manager.querySelector(`.${MODULE_NAME}_session_loading_icon`) !== null;
+
+    // If loading, show loading state
     if (isLoading) {
         manager.innerHTML = `
             <div class="${MODULE_NAME}_session_header">
@@ -153,6 +156,13 @@ export function updateSessionManagerState(
         `;
         return;
     }
+
+    // If transitioning from loading to loaded, full re-render
+    if (wasLoading) {
+        container.innerHTML = renderSessionManager(sessions, activeSessionId, hasUnsavedChanges, isExpanded, false);
+        return;
+    }
+
 
     // Update expanded/collapsed class
     manager.classList.toggle('expanded', isExpanded);
