@@ -338,7 +338,7 @@ export function buildCharacterSummary(char: Character): string {
 
 /**
  * Build character summary using only selected fields.
- * For alternate_greetings, only include greetings at selected indices.
+ * Sanitizes {{char}} placeholders to prevent ST substitution.
  */
 export function buildCharacterSummaryFromSelection(
     char: Character,
@@ -350,14 +350,10 @@ export function buildCharacterSummaryFromSelection(
     for (const field of allFields) {
         const selected = selection[field.key];
 
-        // Not selected at all
         if (!selected) continue;
-
-        // Array field with no indices selected
         if (Array.isArray(selected) && selected.length === 0) continue;
 
         if (field.key === 'alternate_greetings' && Array.isArray(selected)) {
-            // Only include selected greeting indices
             const greetings = field.rawValue as string[];
             const selectedGreetings = (selected as number[])
                 .filter(i => i >= 0 && i < greetings.length)
@@ -372,11 +368,19 @@ export function buildCharacterSummaryFromSelection(
         }
     }
 
+    let result: string;
     if (sections.length === 0) {
-        return `# CHARACTER: ${char.name}\n\n(No fields selected)`;
+        result = `# CHARACTER: ${char.name}\n\n(No fields selected)`;
+    } else {
+        result = `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
     }
 
-    return `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
+    // CRITICAL: Replace {{char}} placeholders with actual name
+    // This prevents ST's substituteParams from replacing with active chat character
+    return result
+        .replace(/\{\{char\}\}/gi, char.name)
+        .replace(/\{\{charName\}\}/gi, char.name)
+        .replace(/<char>/gi, char.name);
 }
 
 /**
