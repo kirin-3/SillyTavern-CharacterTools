@@ -2466,6 +2466,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: nowrap;
+}
+
+.character_tools_alt_greeting_header input[type="checkbox"] {
+    flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_expand_btn {
@@ -2487,18 +2492,17 @@
     font-weight: 500;
     color: var(--SmartThemeQuoteColor);
     cursor: pointer;
+    flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_length {
     font-size: 0.85em;
     opacity: 0.6;
-    margin-left: auto;
     flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_body {
-    margin-top: 6px;
-    padding-left: 28px;
+    width: 100%;
 }
 
 .character_tools_alt_greeting_preview {
@@ -2507,17 +2511,22 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    padding-left: 52px;
+    margin-top: 4px;
 }
 
 .character_tools_alt_greeting_full {
     font-size: 0.9em;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 4px;
-    padding: 8px;
+    padding: 10px;
+    margin-top: 8px;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .character_tools_alt_greeting_full.hidden,
