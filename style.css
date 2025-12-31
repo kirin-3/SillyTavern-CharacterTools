@@ -1,4 +1,4 @@
-/* style.css - Character Tools Extension v1.4.0 */
+/* style.css - Character Tools Extension v1.4.1 */
 /* Single scroll per column, collapsible sections, container queries */
 
 /* ============================================================================
@@ -43,7 +43,7 @@
 }
 
 /* ============================================================================
-   BASE RESET
+   BASE RESET & GLOBAL STYLES
    ============================================================================ */
 
 .character_tools_popup,
@@ -53,8 +53,46 @@
   box-sizing: border-box;
 }
 
+/* Global text alignment - left align everything */
+.character_tools_popup,
+.character_tools_settings_modal {
+  text-align: left;
+}
+
 .hidden {
   display: none !important;
+}
+
+/* ============================================================================
+   BUTTON STYLES - CONSISTENT GAP/PADDING FOR ICON+TEXT
+   ============================================================================ */
+
+/* Menu buttons with icons need proper spacing */
+.character_tools_popup .menu_button,
+.character_tools_settings_modal .menu_button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  min-height: 32px;
+}
+
+.character_tools_popup .menu_button i,
+.character_tools_settings_modal .menu_button i {
+  flex-shrink: 0;
+}
+
+.character_tools_popup .menu_button span,
+.character_tools_settings_modal .menu_button span {
+  white-space: nowrap;
+}
+
+/* Smaller menu buttons */
+.character_tools_popup .menu_button.menu_button_icon,
+.character_tools_settings_modal .menu_button.menu_button_icon {
+  padding: 4px 8px;
+  font-size: 0.85em;
 }
 
 /* ============================================================================
@@ -151,9 +189,6 @@
 
 /* ============================================================================
    MAIN CONTENT - SCROLL MODEL
-
-   Mobile: Single scroll context, everything stacks
-   Desktop: Two columns, each scrolls independently
    ============================================================================ */
 
 .character_tools_main_content {
@@ -453,17 +488,21 @@
   opacity: 0.5;
 }
 
-/* Character Preview Card */
+/* ============================================================================
+   CHARACTER PREVIEW - FLATTENED (no nested card)
+   ============================================================================ */
+
 .character_tools_char_preview {
-  background: transparent;
-  border: none;
-  overflow: visible;
+  /* No border/background - content lives directly in section */
 }
 
-/* Make char header a simple row, not a card header */
 .character_tools_char_header {
-  padding: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: var(--ct-gap-sm);
+  padding-bottom: var(--ct-gap-sm);
   border-bottom: 1px solid var(--SmartThemeBorderColor);
+  flex-wrap: wrap;
 }
 
 .character_tools_char_avatar {
@@ -478,7 +517,6 @@
 .character_tools_char_info {
   flex: 1;
   min-width: 0;
-  text-align: start;
 }
 
 .character_tools_char_name {
@@ -494,19 +532,29 @@
   opacity: 0.6;
 }
 
-/* Character Fields - Collapsible */
-/* Flatten the fields details - no more nested box */
+.character_tools_char_header .character_tools_icon_btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+}
+
+/* Character Fields - Flattened details */
 .character_tools_char_fields_details {
-  border-top: none;  /* Was: 1px solid */
+  margin-top: var(--ct-gap-sm);
 }
 
 .character_tools_char_fields_summary {
-  background: transparent;  /* Was: var(--SmartThemeBlurTintColor) */
-  border-radius: 0;
-  border-bottom: 1px solid var(--SmartThemeBorderColor);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 6px 0;
+  cursor: pointer;
   font-size: 0.8em;
   opacity: 0.8;
+  user-select: none;
+  list-style: none;
+  border-bottom: 1px solid var(--SmartThemeBorderColor);
+  transition: opacity var(--ct-transition);
 }
 
 .character_tools_char_fields_summary::-webkit-details-marker {
@@ -514,7 +562,11 @@
 }
 
 .character_tools_char_fields_summary:hover {
-  background: var(--SmartThemeBorderColor);
+  opacity: 1;
+}
+
+.character_tools_char_fields_details[open] .character_tools_char_fields_summary {
+  margin-bottom: var(--ct-gap-sm);
 }
 
 .character_tools_char_fields_details[open] .character_tools_char_fields_summary i {
@@ -528,15 +580,13 @@
 }
 
 .character_tools_char_fields {
-  /* No max-height - flows naturally */
+  display: flex;
+  flex-direction: column;
 }
 
+/* Field rows - flat list with dividers */
 .character_tools_field_row {
-  border: none;  /* Was: 1px solid */
-  background: transparent;  /* Was: var(--SmartThemeBlurTintColor) */
-  border-radius: 0;
   border-bottom: 1px solid var(--SmartThemeBorderColor);
-  overflow: visible;
 }
 
 .character_tools_field_row:last-child {
@@ -544,17 +594,23 @@
 }
 
 .character_tools_field_header {
-  padding: 8px 0;  /* Was: 6px 8px */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  cursor: pointer;
+  transition: opacity var(--ct-transition);
+  font-size: 0.85em;
 }
 
 .character_tools_field_header:hover {
-  background: var(--SmartThemeChatTintColor);
+  opacity: 0.8;
 }
 
 .character_tools_field_header i {
-  font-size: 0.7em;
+  font-size: 0.75em;
   opacity: 0.5;
-  width: 10px;
+  width: 12px;
   transition: transform var(--ct-transition);
   flex-shrink: 0;
 }
@@ -574,9 +630,8 @@
 .character_tools_field_content {
   background: var(--SmartThemeChatTintColor);
   border-top: 1px solid var(--SmartThemeBorderColor);
-  border-radius: 0;
-  margin: 0 -10px;  /* Bleed to section edges */
   padding: 10px;
+  margin: 0 -10px 8px;
 }
 
 .character_tools_field_content.hidden {
@@ -623,98 +678,97 @@
 
 .character_tools_field_label_text {
   font-weight: 500;
-  font-size: 0.85em;
   color: var(--SmartThemeQuoteColor);
   flex-shrink: 0;
 }
 
 /* Alt greeting expandable items */
 .character_tools_alt_greetings {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .character_tools_alt_greeting_item {
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--ct-radius-sm);
-    background: var(--SmartThemeBlurTintColor);
-    overflow: hidden;
+  border: 1px solid var(--SmartThemeBorderColor);
+  border-radius: var(--ct-radius-sm);
+  background: var(--SmartThemeBlurTintColor);
+  overflow: hidden;
 }
 
 .character_tools_alt_greeting_header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    cursor: pointer;
-    transition: background var(--ct-transition);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background var(--ct-transition);
 }
 
 .character_tools_alt_greeting_header:hover {
-    background: var(--SmartThemeChatTintColor);
+  background: var(--SmartThemeChatTintColor);
 }
 
 .character_tools_alt_greeting_header input[type="checkbox"] {
-    flex-shrink: 0;
+  flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_expand_btn {
-    background: none;
-    border: none;
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-    padding: 2px 6px;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-    flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--SmartThemeBodyColor);
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_expand_btn:hover {
-    opacity: 1;
+  opacity: 1;
 }
 
 .character_tools_alt_greeting_label {
-    font-weight: 500;
-    font-size: 0.8em;
-    color: var(--SmartThemeQuoteColor);
-    flex-shrink: 0;
+  font-weight: 500;
+  font-size: 0.8em;
+  color: var(--SmartThemeQuoteColor);
+  flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_length {
-    font-size: 0.75em;
-    opacity: 0.6;
-    flex-shrink: 0;
-    margin-left: auto;
+  font-size: 0.75em;
+  opacity: 0.6;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .character_tools_alt_greeting_preview {
-    font-size: 0.8em;
-    opacity: 0.7;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0;
+  font-size: 0.8em;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .character_tools_alt_greeting_full {
-    font-size: 0.8em;
-    line-height: 1.4;
-    background: var(--SmartThemeChatTintColor);
-    padding: 10px;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: break-word;
-    max-height: 300px;
-    overflow-y: auto;
-    border-top: 1px solid var(--SmartThemeBorderColor);
+  font-size: 0.8em;
+  line-height: 1.4;
+  background: var(--SmartThemeChatTintColor);
+  padding: 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  border-top: 1px solid var(--SmartThemeBorderColor);
 }
 
 .character_tools_alt_greeting_full.hidden,
 .character_tools_alt_greeting_preview.hidden {
-    display: none;
+  display: none;
 }
 
 /* ============================================================================
@@ -811,8 +865,6 @@
 .character_tools_pipeline_actions .menu_button {
   flex: 1;
   justify-content: center;
-  padding: 6px 10px;
-  font-size: 0.85em;
 }
 
 /* Container query: Hide button text when narrow */
@@ -951,9 +1003,7 @@
 
 .character_tools_schema_actions .menu_button {
   flex: 1 1 auto;
-  min-width: 60px;
-  padding: 4px 6px;
-  font-size: 0.75em;
+  min-width: 70px;
 }
 
 /* Config Actions */
@@ -1079,8 +1129,6 @@
 .character_tools_footer_actions .menu_button {
   flex: 1 1 auto;
   min-width: 80px;
-  padding: 6px 8px;
-  font-size: 0.8em;
 }
 
 /* Container query: Stack footer buttons when narrow */
@@ -1186,10 +1234,6 @@
   opacity: 0.7;
 }
 
-.character_tools_iteration_list {
-  /* No max-height - controlled by collapse state */
-}
-
 .character_tools_iteration_empty,
 .character_tools_iteration_loading {
   padding: var(--ct-gap);
@@ -1263,8 +1307,6 @@
 
 .character_tools_iteration_actions .menu_button {
   flex: 1;
-  padding: 4px 6px;
-  font-size: 0.75em;
 }
 
 /* Verdict Colors */
@@ -1373,7 +1415,7 @@
    ============================================================================ */
 
 #character_tools_session_container {
-  /* Container for the session manager, no extra styling needed */
+  /* Container for the session manager */
 }
 
 #character_tools_session_container.hidden {
@@ -1569,15 +1611,12 @@
 }
 
 .character_tools_session_list_footer .menu_button {
-  font-size: 0.75em;
-  padding: 4px 8px;
   opacity: 0.7;
 }
 
 .character_tools_session_list_footer .menu_button:hover {
   opacity: 1;
 }
-
 
 /* ============================================================================
    SETTINGS MODAL
@@ -1955,7 +1994,6 @@
 
 .character_tools_structured_content,
 .character_tools_markdown_content {
-  text-align: start;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
@@ -1977,7 +2015,7 @@
   .character_tools_hero {
     flex-direction: row;
     justify-content: space-between;
-    text-align: start;
+    text-align: left;
   }
 }
 
@@ -2226,7 +2264,6 @@
 .character_tools_markdown_content td {
   border: 1px solid var(--SmartThemeBorderColor);
   padding: 4px 8px;
-  text-align: start;
 }
 
 .character_tools_markdown_content th {
@@ -2398,61 +2435,5 @@
   .character_tools_accept_recommended {
     outline: 2px solid currentColor;
     outline-offset: 2px;
-  }
-}
-
-/* ============================================================================
-   ALIGNMENT FIXES - Left align everything
-   ============================================================================ */
-
-.character_tools_popup,
-.character_tools_settings_modal {
-  text-align: left;
-}
-
-.character_tools_char_preview {
-  text-align: left;
-}
-
-.character_tools_char_fields_summary {
-  text-align: left;
-}
-
-.character_tools_field_row {
-  text-align: left;
-}
-
-.character_tools_session_list_summary {
-  text-align: left;
-}
-
-.character_tools_session_item {
-  text-align: left;
-}
-
-.character_tools_iteration_header {
-  text-align: left;
-}
-
-.character_tools_iteration_item {
-  text-align: left;
-}
-
-.character_tools_results_body {
-  text-align: left;
-}
-
-.character_tools_stage_config {
-  text-align: left;
-}
-
-/* Fix hero centering - only center on mobile, left on desktop */
-.character_tools_hero {
-  text-align: left;
-}
-
-@media (max-width: 599px) {
-  .character_tools_hero {
-    text-align: center;
   }
 }
