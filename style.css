@@ -2447,3 +2447,67 @@
   text-overflow: ellipsis;
   text-align: left;
 }
+
+/* Alt greeting expandable items */
+.character_tools_alt_greeting_item {
+    margin-bottom: 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    padding: 8px;
+    background: var(--SmartThemeBlurTintColor);
+}
+
+.character_tools_alt_greeting_header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.character_tools_alt_greeting_expand_btn {
+    background: none;
+    border: none;
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    padding: 2px 6px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.character_tools_alt_greeting_expand_btn:hover {
+    opacity: 1;
+}
+
+.character_tools_alt_greeting_label {
+    font-weight: 500;
+    color: var(--SmartThemeQuoteColor);
+    cursor: pointer;
+    flex: 1;
+}
+
+.character_tools_alt_greeting_length {
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
+.character_tools_alt_greeting_preview {
+    font-size: 0.9em;
+    opacity: 0.8;
+    padding-left: 52px; /* Align with label after checkbox + expand btn */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.character_tools_alt_greeting_full {
+    font-size: 0.9em;
+    padding: 8px;
+    padding-left: 52px;
+    background: var(--SmartThemeBlurTintColor);
+    border-radius: 4px;
+    margin-top: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+}

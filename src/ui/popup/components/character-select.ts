@@ -138,7 +138,7 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): 
 }
 
 /**
- * Render alternate greetings with individual selection
+ * Render alternate greetings with individual selection and expandable content
  */
 function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldSelection): string {
     const greetings = field.rawValue as string[];
@@ -154,21 +154,38 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
         const preview = greeting.substring(0, 150);
         const truncated = greeting.length > 150;
         const greetingId = `${MODULE_NAME}_alt_greeting_${field.key}_${i}`;
+        const contentId = `${MODULE_NAME}_alt_greeting_content_${i}`;
 
         return `
           <div class="${MODULE_NAME}_alt_greeting_item">
-            <input
-              type="checkbox"
-              id="${greetingId}"
-              class="${MODULE_NAME}_alt_greeting_checkbox"
-              data-field="${field.key}"
-              data-index="${i}"
-              ${selectedIndices.includes(i) ? 'checked' : ''}
-            >
-            <label class="${MODULE_NAME}_alt_greeting_content" for="${greetingId}">
-              <span class="${MODULE_NAME}_alt_greeting_label">Greeting ${i + 1}</span>
-              <div class="${MODULE_NAME}_alt_greeting_preview">${escapeHtml(preview)}${truncated ? '...' : ''}</div>
-            </label>
+            <div class="${MODULE_NAME}_alt_greeting_header">
+              <input
+                type="checkbox"
+                id="${greetingId}"
+                class="${MODULE_NAME}_alt_greeting_checkbox"
+                data-field="${field.key}"
+                data-index="${i}"
+                ${selectedIndices.includes(i) ? 'checked' : ''}
+              >
+              <button
+                type="button"
+                class="${MODULE_NAME}_alt_greeting_expand_btn"
+                data-greeting-index="${i}"
+                title="Expand/collapse greeting"
+              >
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+              <label class="${MODULE_NAME}_alt_greeting_label" for="${greetingId}">
+                Greeting ${i + 1}
+              </label>
+              <span class="${MODULE_NAME}_alt_greeting_length">${greeting.length} chars</span>
+            </div>
+            <div class="${MODULE_NAME}_alt_greeting_preview">
+              ${escapeHtml(preview)}${truncated ? '...' : ''}
+            </div>
+            <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${contentId}">
+              ${escapeHtml(greeting)}
+            </div>
           </div>
         `;
     }).join('')}

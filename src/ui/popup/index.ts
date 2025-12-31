@@ -300,6 +300,16 @@ function initCharacterSectionEvents(container: HTMLElement): void {
             }
             return;
         }
+        const altGreetingExpandBtn = target.closest(`.${MODULE_NAME}_alt_greeting_expand_btn`);
+        if (altGreetingExpandBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const greetingIndex = parseInt(altGreetingExpandBtn.getAttribute('data-greeting-index') || '-1', 10);
+            if (greetingIndex >= 0) {
+                actions.expandAltGreeting(greetingIndex);
+            }
+            return;
+        }
     });
 
     // Field checkbox changes - delegation
