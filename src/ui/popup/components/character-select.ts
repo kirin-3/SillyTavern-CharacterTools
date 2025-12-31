@@ -151,10 +151,9 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
     return `
     <div class="${MODULE_NAME}_alt_greetings">
       ${greetings.map((greeting, i) => {
-        const preview = greeting.substring(0, 150);
-        const truncated = greeting.length > 150;
+        const preview = greeting.substring(0, 100);
+        const truncated = greeting.length > 100;
         const greetingId = `${MODULE_NAME}_alt_greeting_${field.key}_${i}`;
-        const contentId = `${MODULE_NAME}_alt_greeting_content_${i}`;
 
         return `
           <div class="${MODULE_NAME}_alt_greeting_item">
@@ -178,22 +177,19 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
               <label class="${MODULE_NAME}_alt_greeting_label" for="${greetingId}">
                 Greeting ${i + 1}
               </label>
+              <span class="${MODULE_NAME}_alt_greeting_preview" id="${MODULE_NAME}_alt_greeting_preview_${i}">
+                ${escapeHtml(preview)}${truncated ? '...' : ''}
+              </span>
               <span class="${MODULE_NAME}_alt_greeting_length">${greeting.length} chars</span>
             </div>
-            <div class="${MODULE_NAME}_alt_greeting_body">
-              <div class="${MODULE_NAME}_alt_greeting_preview" id="${MODULE_NAME}_alt_greeting_preview_${i}">
-                ${escapeHtml(preview)}${truncated ? '...' : ''}
-              </div>
-              <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${contentId}">
-                ${escapeHtml(greeting)}
-              </div>
-            </div>
+            <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${MODULE_NAME}_alt_greeting_content_${i}">${escapeHtml(greeting)}</div>
           </div>
         `;
     }).join('')}
     </div>
   `;
 }
+
 
 
 /**

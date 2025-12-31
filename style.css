@@ -2457,16 +2457,22 @@
 
 .character_tools_alt_greeting_item {
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 4px;
-    padding: 8px;
+    border-radius: var(--ct-radius-sm);
     background: var(--SmartThemeBlurTintColor);
+    overflow: hidden;
 }
 
 .character_tools_alt_greeting_header {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: nowrap;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: background var(--ct-transition);
+}
+
+.character_tools_alt_greeting_header:hover {
+    background: var(--SmartThemeChatTintColor);
 }
 
 .character_tools_alt_greeting_header input[type="checkbox"] {
@@ -2490,43 +2496,40 @@
 
 .character_tools_alt_greeting_label {
     font-weight: 500;
+    font-size: 0.8em;
     color: var(--SmartThemeQuoteColor);
-    cursor: pointer;
     flex-shrink: 0;
 }
 
 .character_tools_alt_greeting_length {
-    font-size: 0.85em;
+    font-size: 0.75em;
     opacity: 0.6;
     flex-shrink: 0;
-}
-
-.character_tools_alt_greeting_body {
-    width: 100%;
+    margin-left: auto;
 }
 
 .character_tools_alt_greeting_preview {
-    font-size: 0.9em;
-    opacity: 0.8;
+    font-size: 0.8em;
+    opacity: 0.7;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding-left: 52px;
-    margin-top: 4px;
+    flex: 1;
+    min-width: 0;
 }
 
 .character_tools_alt_greeting_full {
-    font-size: 0.9em;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
+    font-size: 0.8em;
+    line-height: 1.4;
+    background: var(--SmartThemeChatTintColor);
     padding: 10px;
-    margin-top: 8px;
+    margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 400px;
+    overflow-wrap: break-word;
+    max-height: 300px;
     overflow-y: auto;
-    width: 100%;
-    box-sizing: border-box;
+    border-top: 1px solid var(--SmartThemeBorderColor);
 }
 
 .character_tools_alt_greeting_full.hidden,
