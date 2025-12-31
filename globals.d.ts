@@ -64,6 +64,7 @@ declare global {
       quietToLoud?: boolean;
       skipWIAN?: boolean;
     }): Promise<string>;
+    stopGeneration(): void;
 
     // Character operations
     unshallowCharacter(characterId: number): Promise<void>;
