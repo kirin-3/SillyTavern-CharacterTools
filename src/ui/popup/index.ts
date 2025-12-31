@@ -1,37 +1,56 @@
 // src/ui/popup/index.ts
-// Main entry point - orchestrates all components
+// Main entry point - orchestrates all components with unified event binding
 
 import { MODULE_NAME, STAGES } from '../../constants';
 import { debugLog, logError } from '../../debug';
-import { getPromptPreset, getSchemaPreset } from '../../settings';
-import { updateStageConfig as pipelineUpdateStageConfig } from '../../pipeline';
-import { clearSchemaValidationCache } from '../components/stage-config';
-import { getState, getElement, setState, setElement, createInitialState } from './state';
+import { getPromptPreset, getSchemaPreset } from '../../core/settings';
+import { updateStageConfig as pipelineUpdateStageConfig } from '../../core/pipeline';
+import { getState, getElement, setState, setElement, createInitialState, addCleanupFunction, resetAllCaches } from './state';
 import { buildPopupContent } from './html';
 import { updateAllComponents } from './updaters';
 import { subscribeEvents, initGlobalListeners, cleanup } from './lifecycle';
-import { initCharacterSelectListeners, resetCharacterSelectInit } from './handlers/character';
-import { initPipelineNavListeners } from './handlers/pipeline';
-import { initStageConfigListeners } from './handlers/stage-config';
-import { initResultsPanelListeners } from './handlers/results';
-import { initIterationHistoryListeners } from './handlers/iteration';
-import { initSessionManagerListeners, forceSave, cancelAutoSave } from './handlers/session';
-import { runSingleStage } from './generation';
-import { renderCharacterSelect } from '../components/character-select';
-import { renderPipelineNav } from '../components/pipeline-nav';
-import { renderStageConfig } from '../components/stage-config';
-import { renderResultsPanel } from '../components/results-panel';
-import { renderIterationHistory } from '../components/iteration-history';
-import { renderSessionManager } from '../components/session-manager';
+import * as actions from './actions';
+
+// Components for initial render
+import { renderCharacterSelect } from './components/character-select';
+import { renderPipelineNav } from './components/pipeline-nav';
+import { renderStageConfig } from './components/stage-config';
+import { renderResultsPanel } from './components/results-panel';
+import { renderIterationHistory } from './components/iteration-history';
+import { renderSessionManager } from './components/session-manager';
 import { openSettingsModal } from '../settings-modal';
-import type { Character } from '../../types';
+import type { Character, StageName } from '../../types';
+
+// ============================================================================
+// DEBOUNCE TRACKING
+// ============================================================================
+
+interface DebouncedFunc {
+    (...args: unknown[]): unknown;
+    cancel(): void;
+}
+
+const debouncedFunctions: DebouncedFunc[] = [];
+
+function trackDebouncedFunction(fn: DebouncedFunc): void {
+    debouncedFunctions.push(fn);
+}
+
+function cancelAllDebouncedFunctions(): void {
+    debouncedFunctions.forEach(fn => fn.cancel());
+    debouncedFunctions.length = 0;
+}
+
+// ============================================================================
+// MAIN ENTRY POINT
+// ============================================================================
 
 export async function openMainPopup(): Promise<void> {
     const { Popup, POPUP_TYPE } = SillyTavern.getContext();
     const { DOMPurify } = SillyTavern.libs;
 
-    resetCharacterSelectInit();
-    clearSchemaValidationCache();
+    // Reset caches and create fresh state
+    resetAllCaches();
     setState(createInitialState());
 
     let content: string;
@@ -53,22 +72,16 @@ export async function openMainPopup(): Promise<void> {
     });
 
     popup.show().then(async () => {
-        const state = getState();
-        if (state?.abortController) {
-            state.abortController.abort();
-        }
-
-        // Save session on close
-        await forceSave();
-        cancelAutoSave();
-
+        // Cleanup on close
+        actions.cancelGeneration();
+        await actions.forceSave();
+        actions.cancelAutoSave();
+        cancelAllDebouncedFunctions();
         cleanup();
-        clearSchemaValidationCache();
-        resetCharacterSelectInit();
-
         debugLog('info', 'Popup closed', null);
     });
 
+    // Wait for DOM
     await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     const popupEl = document.getElementById(`${MODULE_NAME}_popup`);
@@ -82,13 +95,20 @@ export async function openMainPopup(): Promise<void> {
     }
 
     try {
-        subscribeEvents();
-        initGlobalListeners(runSingleStage);
-
         const { characters } = SillyTavern.getContext();
         const charList = characters as Character[];
 
+        // Initialize components (render only, no event binding)
         initComponents(charList);
+
+        // Bind all events with delegation
+        initEventBindings(popupEl);
+
+        // Subscribe to ST events and keyboard
+        subscribeEvents();
+        initGlobalListeners();
+
+        // Initial UI update
         updateAllComponents();
 
         debugLog('info', 'Popup opened', { characterCount: charList.length });
@@ -97,6 +117,10 @@ export async function openMainPopup(): Promise<void> {
         toastr.error('Character Tools opened but some features may not work.');
     }
 }
+
+// ============================================================================
+// COMPONENT INITIALIZATION (RENDER ONLY)
+// ============================================================================
 
 function initComponents(characters: Character[]): void {
     const state = getState();
@@ -111,7 +135,6 @@ function initComponents(characters: Character[]): void {
             state.pipeline.characterIndex,
             state.pipeline.selectedFields,
         );
-        initCharacterSelectListeners();
     }
 
     // Session manager
@@ -122,7 +145,6 @@ function initComponents(characters: Character[]): void {
             state.activeSessionId,
             state.hasUnsavedChanges,
         );
-        initSessionManagerListeners();
     }
 
     // Pipeline nav
@@ -134,7 +156,6 @@ function initComponents(characters: Character[]): void {
             state.activeStageView,
             !!state.pipeline.character,
         );
-        initPipelineNavListeners();
     }
 
     // Stage config
@@ -146,7 +167,6 @@ function initComponents(characters: Character[]): void {
             null,
             !!state.pipeline.character,
         );
-        initStageConfigListeners();
     }
 
     // Results panel
@@ -158,7 +178,6 @@ function initComponents(characters: Character[]): void {
             state.pipeline.stageStatus[state.activeStageView],
             state.isGenerating,
         );
-        initResultsPanelListeners();
     }
 
     // Iteration history
@@ -169,27 +188,538 @@ function initComponents(characters: Character[]): void {
             state.pipeline.iterationCount,
             state.historyLoaded,
         );
-        initIterationHistoryListeners();
+    }
+}
+
+// ============================================================================
+// UNIFIED EVENT BINDING
+// ============================================================================
+
+function initEventBindings(container: HTMLElement): void {
+    initCharacterSectionEvents(container);
+    initSessionSectionEvents(container);
+    initPipelineSectionEvents(container);
+    initStageConfigEvents(container);
+    initResultsEvents(container);
+    initIterationHistoryEvents(container);
+    initHeaderEvents(container);
+    initDocumentEvents(container);
+}
+
+// ============================================================================
+// CHARACTER SECTION EVENTS
+// ============================================================================
+
+function initCharacterSectionEvents(container: HTMLElement): void {
+    const { lodash } = SillyTavern.libs;
+
+    const charSection = container.querySelector(`#${MODULE_NAME}_character_select_container`);
+    if (!charSection) return;
+
+    const searchInput = charSection.querySelector(`#${MODULE_NAME}_char_search`) as HTMLInputElement;
+    const dropdown = charSection.querySelector(`#${MODULE_NAME}_char_dropdown`) as HTMLElement;
+
+    // Search input - debounced
+    if (searchInput) {
+        const debouncedSearch = lodash.debounce((query: string) => {
+            actions.updateSearchQuery(query);
+        }, 150);
+        trackDebouncedFunction(debouncedSearch);
+
+        searchInput.addEventListener('input', () => {
+            debouncedSearch(searchInput.value);
+        });
+
+        // Keyboard navigation
+        searchInput.addEventListener('keydown', (e) => {
+            const state = getState();
+            if (!state) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                actions.navigateSearchResults('down');
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                actions.navigateSearchResults('up');
+            } else if (e.key === 'Enter' && state.searchState.selectedIndex >= 0) {
+                e.preventDefault();
+                const selected = state.searchState.results[state.searchState.selectedIndex];
+                if (selected) {
+                    actions.selectSearchResult(selected.index);  // Pass character index
+                }
+            } else if (e.key === 'Escape') {
+                actions.closeSearchDropdown();
+            }
+        });
     }
 
-    // Header buttons
-    el.querySelector(`#${MODULE_NAME}_settings_btn`)?.addEventListener('click', () => {
-        openSettingsModal(() => {
-            const s = getState();
-            if (s) {
-                checkForDeletedPresetReferences();
+    // Dropdown click - delegation
+    if (dropdown) {
+        dropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const item = (e.target as HTMLElement).closest(`.${MODULE_NAME}_dropdown_item`);
+            if (item) {
+                const index = parseInt(item.getAttribute('data-index') || '-1', 10);
+                if (index >= 0) {
+                    actions.selectSearchResult(index);
+                }
             }
+        });
+    }
+
+    // Character section click delegation
+    charSection.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+
+        // Clear character button
+        if (target.closest(`#${MODULE_NAME}_char_clear`)) {
+            actions.clearCharacter();
+            return;
+        }
+
+        // Select all fields
+        if (target.closest(`#${MODULE_NAME}_select_all_fields`)) {
+            actions.selectAllFields();
+            return;
+        }
+
+        // Deselect all fields
+        if (target.closest(`#${MODULE_NAME}_select_none_fields`)) {
+            actions.deselectAllFields();
+            return;
+        }
+
+        // Field expand button
+        const expandBtn = target.closest(`.${MODULE_NAME}_field_expand_btn`);
+        if (expandBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const fieldKey = expandBtn.getAttribute('data-field');
+            if (fieldKey) {
+                actions.expandField(fieldKey);
+            }
+            return;
+        }
+    });
+
+    // Field checkbox changes - delegation
+    charSection.addEventListener('change', (e) => {
+        const target = e.target as HTMLInputElement;
+
+        // Main field checkbox
+        if (target.classList.contains(`${MODULE_NAME}_field_checkbox`)) {
+            const fieldKey = target.dataset.field;
+            const isArray = target.dataset.isArray === 'true';
+            if (fieldKey) {
+                actions.toggleField(fieldKey, isArray);
+            }
+            return;
+        }
+
+        // Alt greeting checkbox
+        if (target.classList.contains(`${MODULE_NAME}_alt_greeting_checkbox`)) {
+            const fieldKey = target.dataset.field;
+            const index = parseInt(target.dataset.index || '-1', 10);
+            if (fieldKey && index >= 0) {
+                actions.toggleAltGreeting(fieldKey, index, target.checked);
+            }
+            return;
+        }
+    });
+}
+
+// ============================================================================
+// SESSION SECTION EVENTS
+// ============================================================================
+
+function initSessionSectionEvents(container: HTMLElement): void {
+    const sessionSection = container.querySelector(`#${MODULE_NAME}_session_section`);
+    if (!sessionSection) return;
+
+    sessionSection.addEventListener('click', async (e) => {
+        const target = e.target as HTMLElement;
+
+        // Save session
+        if (target.closest(`#${MODULE_NAME}_save_session_btn`)) {
+            await actions.saveCurrentSession();
+            return;
+        }
+
+        // New session
+        if (target.closest(`#${MODULE_NAME}_new_session_btn`)) {
+            await actions.createNewSession();
+            return;
+        }
+
+        // Clear all sessions
+        if (target.closest(`#${MODULE_NAME}_clear_all_sessions_btn`)) {
+            await actions.clearAllSessions();
+            return;
+        }
+
+        // Load session
+        const loadBtn = target.closest(`.${MODULE_NAME}_session_load_btn`);
+        if (loadBtn) {
+            const sessionId = loadBtn.getAttribute('data-session-id');
+            if (sessionId) {
+                await actions.loadSession(sessionId);
+            }
+            return;
+        }
+
+        // Rename session
+        const renameBtn = target.closest(`.${MODULE_NAME}_session_rename_btn`);
+        if (renameBtn) {
+            const sessionId = renameBtn.getAttribute('data-session-id');
+            if (sessionId) {
+                await actions.renameSession(sessionId);
+            }
+            return;
+        }
+
+        // Delete session
+        const deleteBtn = target.closest(`.${MODULE_NAME}_session_delete_btn`);
+        if (deleteBtn) {
+            const sessionId = deleteBtn.getAttribute('data-session-id');
+            if (sessionId) {
+                await actions.deleteSessionById(sessionId);
+            }
+            return;
+        }
+    });
+}
+
+// ============================================================================
+// PIPELINE SECTION EVENTS
+// ============================================================================
+
+function initPipelineSectionEvents(container: HTMLElement): void {
+    const pipelineSection = container.querySelector(`#${MODULE_NAME}_pipeline_nav_container`);
+    if (!pipelineSection) return;
+
+    // Stage checkbox changes
+    pipelineSection.addEventListener('change', (e) => {
+        const checkbox = e.target as HTMLInputElement;
+        if (checkbox.classList.contains(`${MODULE_NAME}_stage_checkbox`)) {
+            const stage = checkbox.getAttribute('data-stage') as StageName;
+            if (stage) {
+                actions.toggleStageSelection(stage);
+            }
+        }
+    });
+
+    // Click delegation
+    pipelineSection.addEventListener('click', async (e) => {
+        const target = e.target as HTMLElement;
+        const state = getState();
+        if (!state) return;
+
+        // Stage button - switch active view
+        const stageBtn = target.closest(`.${MODULE_NAME}_stage_btn`);
+        if (stageBtn) {
+            const stage = stageBtn.getAttribute('data-stage') as StageName;
+            if (stage) {
+                actions.setActiveStage(stage);
+            }
+            return;
+        }
+
+        // Run selected stage
+        if (target.closest(`#${MODULE_NAME}_run_selected_btn`)) {
+            await actions.runSingleStage(state.activeStageView);
+            return;
+        }
+
+        // Run all stages
+        if (target.closest(`#${MODULE_NAME}_run_all_btn`)) {
+            await actions.runAllStages();
+            return;
+        }
+
+        // Reset pipeline
+        if (target.closest(`#${MODULE_NAME}_reset_pipeline_btn`)) {
+            await actions.resetCurrentPipeline();
+            return;
+        }
+    });
+}
+
+// ============================================================================
+// STAGE CONFIG EVENTS
+// ============================================================================
+
+function initStageConfigEvents(container: HTMLElement): void {
+    const { lodash } = SillyTavern.libs;
+
+    const stageSection = container.querySelector(`#${MODULE_NAME}_stage_config_container`);
+    if (!stageSection) return;
+
+    // Select changes
+    stageSection.addEventListener('change', (e) => {
+        const target = e.target as HTMLSelectElement | HTMLInputElement;
+
+        // Prompt preset select
+        if (target.id === `${MODULE_NAME}_prompt_preset_select`) {
+            actions.setPromptPreset((target as HTMLSelectElement).value || null);
+            return;
+        }
+
+        // Schema preset select
+        if (target.id === `${MODULE_NAME}_schema_preset_select`) {
+            actions.setSchemaPreset((target as HTMLSelectElement).value || null);
+            return;
+        }
+
+        // Structured output toggle
+        if (target.id === `${MODULE_NAME}_use_structured`) {
+            actions.toggleStructuredOutput((target as HTMLInputElement).checked);
+            return;
+        }
+    });
+
+    // Debounced input handlers for textareas
+    const debouncedPromptUpdate = lodash.debounce((value: string) => {
+        actions.updateCustomPrompt(value);
+    }, 300);
+    trackDebouncedFunction(debouncedPromptUpdate);
+
+    const debouncedSchemaUpdate = lodash.debounce((value: string) => {
+        actions.updateCustomSchema(value);
+    }, 300);
+    trackDebouncedFunction(debouncedSchemaUpdate);
+
+    stageSection.addEventListener('input', (e) => {
+        const target = e.target as HTMLTextAreaElement;
+
+        if (target.id === `${MODULE_NAME}_custom_prompt`) {
+            debouncedPromptUpdate(target.value);
+            return;
+        }
+
+        if (target.id === `${MODULE_NAME}_custom_schema`) {
+            debouncedSchemaUpdate(target.value);
+            return;
+        }
+    });
+
+    // Click delegation
+    stageSection.addEventListener('click', async (e) => {
+        const target = e.target as HTMLElement;
+
+        // Save prompt preset
+        if (target.closest(`#${MODULE_NAME}_save_prompt_preset_btn`)) {
+            await actions.saveCurrentPromptAsPreset();
+            return;
+        }
+
+        // Save schema preset
+        if (target.closest(`#${MODULE_NAME}_save_schema_preset_btn`)) {
+            await actions.saveCurrentSchemaAsPreset();
+            return;
+        }
+
+        // Generate schema
+        if (target.closest(`#${MODULE_NAME}_generate_schema_btn`)) {
+            await actions.generateSchema();
+            return;
+        }
+
+        // Validate schema
+        if (target.closest(`#${MODULE_NAME}_validate_schema_btn`)) {
+            await actions.validateCurrentSchema();
+            return;
+        }
+
+        // Fix schema
+        if (target.closest(`#${MODULE_NAME}_fix_schema_btn`)) {
+            actions.fixCurrentSchema();
+            return;
+        }
+
+        // Format schema
+        if (target.closest(`#${MODULE_NAME}_format_schema_btn`)) {
+            actions.formatCurrentSchema();
+            return;
+        }
+
+        // Preview prompt
+        if (target.closest(`#${MODULE_NAME}_preview_prompt_btn`)) {
+            await actions.previewPrompt();
+            return;
+        }
+    });
+}
+
+// ============================================================================
+// RESULTS EVENTS
+// ============================================================================
+
+function initResultsEvents(container: HTMLElement): void {
+    const resultsSection = container.querySelector(`#${MODULE_NAME}_results_container`);
+    if (!resultsSection) return;
+
+    resultsSection.addEventListener('click', async (e) => {
+        const target = e.target as HTMLElement;
+        const state = getState();
+        if (!state) return;
+
+        // Regenerate
+        if (target.closest(`#${MODULE_NAME}_regenerate_btn`)) {
+            await actions.regenerateResult();
+            return;
+        }
+
+        // Lock
+        if (target.closest(`#${MODULE_NAME}_lock_btn`)) {
+            actions.lockResult();
+            return;
+        }
+
+        // Unlock
+        if (target.closest(`#${MODULE_NAME}_unlock_btn`)) {
+            actions.unlockResult();
+            return;
+        }
+
+        // Copy
+        if (target.closest(`#${MODULE_NAME}_copy_btn`)) {
+            await actions.copyResultToClipboard();
+            return;
+        }
+
+        // Continue to next stage
+        if (target.closest(`#${MODULE_NAME}_continue_btn`)) {
+            actions.continueToNextStage();
+            return;
+        }
+
+        // Run analyze after refinement
+        if (target.closest(`#${MODULE_NAME}_run_analyze_btn`)) {
+            await actions.runAnalyzeAfterRefinement();
+            return;
+        }
+
+        // Refine
+        if (target.closest(`#${MODULE_NAME}_refine_btn`)) {
+            await actions.runRefinement();
+            return;
+        }
+
+        // Accept rewrite
+        if (target.closest(`#${MODULE_NAME}_accept_btn`)) {
+            actions.acceptRewrite();
+            return;
+        }
+
+        // Export
+        if (target.closest(`#${MODULE_NAME}_export_btn`)) {
+            actions.exportSession();
+            return;
+        }
+
+        // Cancel generation
+        if (target.closest(`#${MODULE_NAME}_cancel_btn`)) {
+            actions.cancelGeneration();
+            return;
+        }
+    });
+}
+
+// ============================================================================
+// ITERATION HISTORY EVENTS
+// ============================================================================
+
+function initIterationHistoryEvents(container: HTMLElement): void {
+    const historySection = container.querySelector(`#${MODULE_NAME}_iteration_history_container`);
+    if (!historySection) return;
+
+    historySection.addEventListener('click', async (e) => {
+        const target = e.target as HTMLElement;
+
+        // Collapse toggle
+        if (target.closest(`#${MODULE_NAME}_iteration_header_toggle`)) {
+            actions.toggleIterationHistoryCollapse();
+            return;
+        }
+
+        // Revert button
+        const revertBtn = target.closest(`.${MODULE_NAME}_iteration_revert_btn`);
+        if (revertBtn) {
+            const index = parseInt(revertBtn.getAttribute('data-index') || '-1', 10);
+            if (index >= 0) {
+                await actions.revertToIteration(index);
+            }
+            return;
+        }
+
+        // View button
+        const viewBtn = target.closest(`.${MODULE_NAME}_iteration_view_btn`);
+        if (viewBtn) {
+            const index = parseInt(viewBtn.getAttribute('data-index') || '-1', 10);
+            if (index >= 0) {
+                await actions.viewIterationDetail(index);
+            }
+            return;
+        }
+    });
+}
+
+// ============================================================================
+// HEADER EVENTS
+// ============================================================================
+
+function initHeaderEvents(container: HTMLElement): void {
+    // Settings button
+    const settingsBtn = container.querySelector(`#${MODULE_NAME}_settings_btn`);
+    settingsBtn?.addEventListener('click', () => {
+        openSettingsModal(() => {
+            // Check for deleted preset references after settings close
+            checkForDeletedPresetReferences();
             updateAllComponents();
         });
     });
 
-    el.querySelector(`#${MODULE_NAME}_close_btn`)?.addEventListener('click', () => {
-        const dialog = el.closest('.popup');
-        if (dialog) {
-            const cancelBtn = dialog.querySelector('.popup-button-cancel, .popup-button-ok') as HTMLElement;
-            cancelBtn?.click();
-        }
+    // Close button
+    const closeBtn = container.querySelector(`#${MODULE_NAME}_close_btn`);
+    closeBtn?.addEventListener('click', () => {
+        closePopup();
     });
+}
+
+// ============================================================================
+// DOCUMENT-LEVEL EVENTS
+// ============================================================================
+
+function initDocumentEvents(container: HTMLElement): void {
+    // Close dropdown when clicking outside
+    const closeDropdownHandler = (e: MouseEvent) => {
+        const dropdown = container.querySelector(`#${MODULE_NAME}_char_dropdown`);
+        const search = container.querySelector(`#${MODULE_NAME}_char_search`);
+
+        if (dropdown && search &&
+            !dropdown.contains(e.target as Node) &&
+            !search.contains(e.target as Node)) {
+            actions.closeSearchDropdown();
+        }
+    };
+
+    document.addEventListener('click', closeDropdownHandler);
+    addCleanupFunction(() => document.removeEventListener('click', closeDropdownHandler));
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function closePopup(): void {
+    const el = getElement();
+    if (!el) return;
+
+    const dialog = el.closest('.popup');
+    if (dialog) {
+        const btn = dialog.querySelector('.popup-button-cancel, .popup-button-ok') as HTMLElement;
+        btn?.click();
+    }
 }
 
 function checkForDeletedPresetReferences(): void {

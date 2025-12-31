@@ -3,7 +3,7 @@
 // Debug logging and diagnostics for the extension.
 
 import { MODULE_NAME, MAX_DEBUG_LOG_ENTRIES } from './constants';
-import { getSettings } from './settings';
+import { getSettings } from './core/settings';
 import type { DebugLogEntry, DebugLogType } from './types';
 
 // ============================================================================

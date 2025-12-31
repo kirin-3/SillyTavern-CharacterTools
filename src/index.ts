@@ -2,7 +2,7 @@
 //
 // Extension entry point
 
-import { getSettings } from './settings';
+import { getSettings } from './core/settings';
 import { initPanel } from './ui/panel';
 import { debugLog, logError } from './debug';
 import { VERSION } from './constants';

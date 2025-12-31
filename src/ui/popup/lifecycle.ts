@@ -2,12 +2,20 @@
 // Event subscription and global keyboard handlers
 
 import { debugLog } from '../../debug';
-import { isApiReady } from '../../generator';
-import { clearTokenCache } from '../components/character-select';
-import { setCharacter } from '../../pipeline';
-import { getState, setState, setElement } from './state';
+import { isApiReady } from '../../core/generator';
+import { setCharacter } from '../../core/pipeline';
+import {
+    getState,
+    setState,
+    setElement,
+    updateState,
+    updatePipeline,
+    resetAllCaches,
+    runCleanupFunctions,
+} from './state';
 import { updateAllComponents, updateApiStatus, updateTokenEstimate } from './updaters';
-import type { Character, StageName } from '../../types';
+import * as actions from './actions';
+import type { Character } from '../../types';
 
 const eventCleanup: Array<() => void> = [];
 let keyboardHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -88,9 +96,7 @@ export function unsubscribeEvents(): void {
     debugLog('info', 'Event listeners unsubscribed', null);
 }
 
-export function initGlobalListeners(
-    runSingleStage: (stage: StageName) => Promise<void>,  // CHANGED: string -> StageName, void -> Promise<void>
-): void {
+export function initGlobalListeners(): void {
     const state = getState();
     if (!state) return;
 
@@ -101,12 +107,12 @@ export function initGlobalListeners(
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             if (!s.isGenerating && !s.isRefining) {
-                runSingleStage(s.activeStageView);
+                actions.runSingleStage(s.activeStageView);
             }
         }
 
-        if (e.key === 'Escape' && (s.isGenerating || s.isRefining) && s.abortController) {
-            s.abortController.abort();
+        if (e.key === 'Escape' && (s.isGenerating || s.isRefining)) {
+            actions.cancelGeneration();
         }
     };
 
@@ -118,29 +124,16 @@ export function removeGlobalListeners(): void {
         document.removeEventListener('keydown', keyboardHandler);
         keyboardHandler = null;
     }
-
-    const state = getState();
-    if (state) {
-        // Cancel all debounced functions
-        state.debouncedFunctions.forEach(fn => fn.cancel());
-        state.debouncedFunctions = [];
-
-        // Run all cleanup functions
-        state.cleanupFunctions.forEach(fn => {
-            try {
-                fn();
-            } catch (e) {
-                debugLog('error', 'Cleanup function failed', e);
-            }
-        });
-        state.cleanupFunctions = [];
-    }
 }
 
 export function cleanup(): void {
     unsubscribeEvents();
     removeGlobalListeners();
-    clearTokenCache();
+    runCleanupFunctions();
+    resetAllCaches();
+    actions.cancelAutoSave();
+    actions.cancelGeneration();
+    actions.resetActionState();
     setState(null);
     setElement(null);
 }
@@ -158,7 +151,7 @@ function refreshSelectedCharacter(editedId?: number): void {
     if (index >= 0 && index < charList.length) {
         const updatedChar = charList[index];
         if (updatedChar.name === state.pipeline.character?.name) {
-            state.pipeline = { ...state.pipeline, character: updatedChar };
+            updatePipeline(p => ({ ...p, character: updatedChar }));
             updateAllComponents();
             debugLog('info', 'Character refreshed', { name: updatedChar.name });
         } else {
@@ -185,11 +178,11 @@ function handleCharacterDeleted(deletedId: number): void {
         const newIndex = currentIndex - 1;
 
         if (newIndex >= 0 && newIndex < charList.length) {
-            state.pipeline = {
-                ...state.pipeline,
+            updatePipeline(p => ({
+                ...p,
                 characterIndex: newIndex,
                 character: charList[newIndex],
-            };
+            }));
             debugLog('info', 'Character index adjusted after deletion', { oldIndex: currentIndex, newIndex });
         } else {
             handleCharacterInvalidated();
@@ -201,17 +194,17 @@ function handleCharacterInvalidated(): void {
     const state = getState();
     if (!state) return;
 
-    if (state.abortController) {
-        state.abortController.abort();
-    }
+    actions.cancelGeneration();
 
     debugLog('info', 'Character invalidated, clearing selection', null);
 
-    state.pipeline = setCharacter(state.pipeline, null, null);
-    state.isGenerating = false;
-    state.isRefining = false;
-    state.abortController = null;
-    state.historyLoaded = false;
+    // Explicitly reset generation flags in case cancellation is still in flight
+    updateState(() => ({
+        isGenerating: false,
+        isRefining: false,
+    }));
+
+    updatePipeline(p => setCharacter(p, null, null));
     updateAllComponents();
     toastr.info('Character selection cleared');
 }

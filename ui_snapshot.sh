@@ -16,7 +16,7 @@ is_placeholder() {
 }
 
 {
-  echo "# PROJECT SNAPSHOT - src/ui"
+  echo "# PROJECT SNAPSHOT - src/ui + root files"
   echo "Generated: $(date)"
   echo ""
 
@@ -26,6 +26,29 @@ is_placeholder() {
   echo '```'
   echo ""
 
+  # Root CSS files
+  for file in ./*.css; do
+    [[ -f "$file" ]] || continue
+    ext="${file##*.}"
+    echo "## FILE: $file"
+    echo '```'"$ext"
+    cat "$file"
+    echo '```'
+    echo ""
+  done
+
+  # Root type files (globals.d.ts, types.ts, etc.)
+  for file in ./globals.d.ts ./src/types.ts; do
+    [[ -f "$file" ]] || continue
+    ext="${file##*.}"
+    echo "## FILE: $file"
+    echo '```'"$ext"
+    cat "$file"
+    echo '```'
+    echo ""
+  done
+
+  # src/ui files
   find ./src/ui \
     -type f \
     \( -name "*.ts" -o -name "*.js" -o -name "*.json" -o -name "*.html" -o -name "*.css" -o -name "*.md" -o -name "*.yml" -o -name "*.yaml" -o -name "*.sh" \) \

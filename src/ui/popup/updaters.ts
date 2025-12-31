@@ -1,22 +1,24 @@
 // src/ui/popup/updaters.ts
-// All UI update functions
+// All UI update functions - read state, update DOM, no side effects
 
 import { MODULE_NAME, STAGE_LABELS, STAGE_ICONS } from '../../constants';
 import { debugLog } from '../../debug';
-import { getApiInfo, isApiReady, getStageTokenCount, getRefinementTokenCount } from '../../generator';
-import { getNextStage } from '../../pipeline';
-import { updateCharacterSelectState } from '../components/character-select';
-import { updatePipelineNavState } from '../components/pipeline-nav';
-import { updateStageConfigState } from '../components/stage-config';
-import { updateResultsPanelState } from '../components/results-panel';
-import { updateIterationHistoryState } from '../components/iteration-history';
-import { renderSessionManager, updateSessionManagerState } from '../components/session-manager';
-import { getState, getElement } from './state';
+import { getApiInfo, isApiReady, getStageTokenCount, getRefinementTokenCount } from '../../core/generator';
+import { getNextStage } from '../../core/pipeline';
+import { getSchemaPreset } from '../../core/settings';
+import { getSchemaValidationFromCache, getState, getElement } from './state';
+import { updateCharacterSelectState } from './components/character-select';
+import { updatePipelineNavState } from './components/pipeline-nav';
+import { updateStageConfigState } from './components/stage-config';
+import { updateResultsPanelState } from './components/results-panel';
+import { updateIterationHistoryState } from './components/iteration-history';
+import { renderSessionManager, updateSessionManagerState } from './components/session-manager';
+
+import type { StageConfig, SchemaValidationResult } from '../../types';
 
 let isUpdating = false;
 
 export function updateAllComponents(): void {
-    // Prevent re-entry which can cause infinite loops
     if (isUpdating) {
         debugLog('info', 'updateAllComponents already running, skipping', null);
         return;
@@ -63,10 +65,10 @@ export function updateCharacterSelect(): void {
     const container = el.querySelector(`#${MODULE_NAME}_character_select_container`);
     if (container) {
         updateCharacterSelectState(
-      container as HTMLElement,
-      state.pipeline.character,
-      state.pipeline.characterIndex,
-      state.pipeline.selectedFields,
+            container as HTMLElement,
+            state.pipeline.character,
+            state.pipeline.characterIndex,
+            state.pipeline.selectedFields,
         );
     }
 }
@@ -79,12 +81,12 @@ export function updatePipelineNav(): void {
     const container = el.querySelector(`#${MODULE_NAME}_pipeline_nav_container`);
     if (container) {
         updatePipelineNavState(
-      container as HTMLElement,
-      state.pipeline.selectedStages,
-      state.pipeline.stageStatus,
-      state.activeStageView,
-      !!state.pipeline.character && isApiReady(),
-      state.isGenerating || state.isRefining,
+            container as HTMLElement,
+            state.pipeline.selectedStages,
+            state.pipeline.stageStatus,
+            state.activeStageView,
+            !!state.pipeline.character && isApiReady(),
+            state.isGenerating || state.isRefining,
         );
     }
 }
@@ -113,16 +115,39 @@ export function updateStageConfigUI(): void {
     if (!el || !state) return;
 
     const container = el.querySelector(`#${MODULE_NAME}_stage_config_container`);
-    if (container) {
-        updateStageConfigState(
-      container as HTMLElement,
-      state.activeStageView,
-      state.pipeline.configs[state.activeStageView],
-      state.isGenerating || state.isRefining,
-      !!state.pipeline.character,
-        );
+    if (!container) return;
+
+    const config = state.pipeline.configs[state.activeStageView];
+
+    // Resolve schema content once here, pass to component
+    const schemaContent = resolveSchemaContent(config);
+
+    // Get cached validation if structured output is enabled
+    let schemaValidation: SchemaValidationResult | undefined = undefined;
+    if (config.useStructuredOutput && schemaContent.trim()) {
+        schemaValidation = getSchemaValidationFromCache(schemaContent) ?? undefined;
     }
+
+    updateStageConfigState(
+        container as HTMLElement,
+        state.activeStageView,
+        config,
+        state.isGenerating || state.isRefining,
+        !!state.pipeline.character,
+        schemaValidation,
+        schemaContent,  // Pass resolved content
+    );
 }
+
+// Helper to resolve schema content from config
+function resolveSchemaContent(config: StageConfig): string {
+    if (config.schemaPresetId) {
+        const preset = getSchemaPreset(config.schemaPresetId);
+        if (preset) return JSON.stringify(preset.schema, null, 2);
+    }
+    return config.customSchema;
+}
+
 
 export function updateResultsPanel(): void {
     const el = getElement();
@@ -132,13 +157,13 @@ export function updateResultsPanel(): void {
     const container = el.querySelector(`#${MODULE_NAME}_results_container`);
     if (container) {
         updateResultsPanelState(
-      container as HTMLElement,
-      state.activeStageView,
-      state.pipeline.results[state.activeStageView],
-      state.pipeline.stageStatus[state.activeStageView],
-      state.isGenerating,
-      getNextStage(state.pipeline, state.activeStageView),
-      state.pipeline,
+            container as HTMLElement,
+            state.activeStageView,
+            state.pipeline.results[state.activeStageView],
+            state.pipeline.stageStatus[state.activeStageView],
+            state.isGenerating,
+            getNextStage(state.pipeline, state.activeStageView),
+            state.pipeline,
         );
     }
 }
@@ -170,10 +195,10 @@ export function updateIterationHistory(): void {
     const container = el.querySelector(`#${MODULE_NAME}_iteration_history_container`);
     if (container) {
         updateIterationHistoryState(
-      container as HTMLElement,
-      state.pipeline.iterationHistory,
-      state.pipeline.iterationCount,
-      state.historyLoaded,
+            container as HTMLElement,
+            state.pipeline.iterationHistory,
+            state.pipeline.iterationCount,
+            state.historyLoaded,
         );
     }
 }
@@ -227,7 +252,6 @@ export function updateSessionManager(): void {
     const container = el.querySelector(`#${MODULE_NAME}_session_section`);
     if (!container) return;
 
-    // Only show if character is selected
     if (!state.pipeline.character) {
         container.classList.add('hidden');
         return;

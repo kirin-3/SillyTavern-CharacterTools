@@ -1,0 +1,404 @@
+// src/ui/popup/components/stage-config.ts
+//
+// Stage configuration component - prompt/schema selection and editing
+// PURE RENDER/UPDATE FUNCTIONS ONLY - no state mutation, no action triggers
+
+import { MODULE_NAME, STAGE_LABELS } from '../../../constants';
+import { getPromptPresets, getSchemaPresets, getPromptPreset, getSchemaPreset } from '../../../core/settings';
+import type { StageName, StageConfig, PromptPreset, SchemaPreset, SchemaValidationResult } from '../../../types';
+
+// ============================================================================
+// RENDER
+// ============================================================================
+
+export function renderStageConfig(
+    stage: StageName,
+    config: StageConfig,
+    tokenEstimate: { tokens: number; percentage: number } | null,
+    hasCharacter: boolean,
+    schemaValidation?: SchemaValidationResult,
+): string {
+    const promptPresets = getPromptPresets(stage);
+    const schemaPresets = getSchemaPresets(stage);
+
+    // Get current prompt content
+    let promptContent = config.customPrompt;
+    if (config.promptPresetId) {
+        const preset = getPromptPreset(config.promptPresetId);
+        if (preset) promptContent = preset.prompt;
+    }
+
+    // Get current schema content
+    const schemaContent = resolveSchemaContentLocal(config);
+
+    // Schema status display
+    let schemaStatus = '';
+    if (config.useStructuredOutput && schemaContent.trim() && schemaValidation) {
+        if (!schemaValidation.valid) {
+            schemaStatus = `<div class="${MODULE_NAME}_schema_status error"><i class="fa-solid fa-circle-xmark"></i> ${escapeHtml(schemaValidation.error || 'Invalid schema')}</div>`;
+        } else if (schemaValidation.warnings?.length) {
+            schemaStatus = `<div class="${MODULE_NAME}_schema_status warning"><i class="fa-solid fa-triangle-exclamation"></i> ${schemaValidation.warnings.length} warning(s)</div>`;
+        } else {
+            schemaStatus = `<div class="${MODULE_NAME}_schema_status success"><i class="fa-solid fa-circle-check"></i> Valid schema</div>`;
+        }
+    }
+
+    // Token estimate display
+    let tokenDisplay = '<i class="fa-solid fa-microchip"></i> Select a character';
+    let tokenClass = '';
+    if (tokenEstimate) {
+        tokenDisplay = `<i class="fa-solid fa-microchip"></i> ~${tokenEstimate.tokens.toLocaleString()} tokens (${tokenEstimate.percentage}%)`;
+        if (tokenEstimate.percentage > 80) tokenClass = 'danger';
+        else if (tokenEstimate.percentage > 50) tokenClass = 'warning';
+    }
+
+    // Check if current content differs from selected preset
+    const promptDiffersFromPreset = config.promptPresetId
+        ? getPromptPreset(config.promptPresetId)?.prompt !== promptContent
+        : promptContent.trim().length > 0;
+
+    const schemaDiffersFromPreset = config.schemaPresetId
+        ? JSON.stringify(getSchemaPreset(config.schemaPresetId)?.schema, null, 2) !== schemaContent
+        : schemaContent.trim().length > 0;
+
+    const showFixButton = config.useStructuredOutput && schemaContent.trim() &&
+        schemaValidation && ((schemaValidation.warnings?.length ?? 0) > 0 || !schemaValidation.valid);
+
+    return `
+    <div class="${MODULE_NAME}_stage_config">
+      <!-- Prompt Section -->
+      <div class="${MODULE_NAME}_config_group">
+        <div class="${MODULE_NAME}_config_header">
+          <span class="${MODULE_NAME}_config_label">Prompt</span>
+          <div class="${MODULE_NAME}_config_header_actions">
+            <button
+              id="${MODULE_NAME}_save_prompt_preset_btn"
+              class="${MODULE_NAME}_icon_btn"
+              title="Save as Preset"
+              ${!promptDiffersFromPreset ? 'disabled' : ''}
+            >
+              <i class="fa-solid fa-floppy-disk"></i>
+            </button>
+            <select id="${MODULE_NAME}_prompt_preset_select" class="${MODULE_NAME}_preset_select text_pole">
+              <option value="">Custom</option>
+              ${renderPresetOptions(promptPresets, config.promptPresetId)}
+            </select>
+          </div>
+        </div>
+        <textarea
+          id="${MODULE_NAME}_custom_prompt"
+          class="${MODULE_NAME}_prompt_textarea text_pole"
+          placeholder="Enter your prompt for the ${STAGE_LABELS[stage]} stage..."
+        >${escapeHtml(promptContent)}</textarea>
+        <div class="${MODULE_NAME}_config_footer">
+          <span class="${MODULE_NAME}_char_count">${promptContent.length.toLocaleString()} chars</span>
+        </div>
+      </div>
+
+      <!-- Structured Output Toggle -->
+      <div class="${MODULE_NAME}_config_group">
+        <label class="checkbox_label">
+          <input
+            type="checkbox"
+            id="${MODULE_NAME}_use_structured"
+            ${config.useStructuredOutput ? 'checked' : ''}
+          >
+          <span>Use Structured Output (JSON Schema)</span>
+        </label>
+      </div>
+
+      <!-- Schema Section -->
+      <div class="${MODULE_NAME}_schema_section ${config.useStructuredOutput ? '' : 'hidden'}">
+        <div class="${MODULE_NAME}_config_header">
+          <span class="${MODULE_NAME}_config_label">JSON Schema</span>
+          <div class="${MODULE_NAME}_config_header_actions">
+            <button
+              id="${MODULE_NAME}_save_schema_preset_btn"
+              class="${MODULE_NAME}_icon_btn"
+              title="Save as Preset"
+              ${!schemaDiffersFromPreset || !schemaContent.trim() ? 'disabled' : ''}
+            >
+              <i class="fa-solid fa-floppy-disk"></i>
+            </button>
+            <select id="${MODULE_NAME}_schema_preset_select" class="${MODULE_NAME}_preset_select text_pole">
+              <option value="">Custom</option>
+              ${renderPresetOptions(schemaPresets, config.schemaPresetId)}
+            </select>
+          </div>
+        </div>
+        <textarea
+          id="${MODULE_NAME}_custom_schema"
+          class="${MODULE_NAME}_schema_textarea text_pole"
+          placeholder='{"name": "MySchema", "value": {"type": "object", ...}}'
+        >${escapeHtml(schemaContent)}</textarea>
+        ${schemaStatus}
+
+        <!-- Schema Actions -->
+        <div class="${MODULE_NAME}_schema_actions">
+          <button
+            id="${MODULE_NAME}_generate_schema_btn"
+            class="menu_button menu_button_icon"
+            title="Generate schema from description"
+          >
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>Generate</span>
+          </button>
+          <button
+            id="${MODULE_NAME}_validate_schema_btn"
+            class="menu_button menu_button_icon"
+            title="Validate schema"
+            ${!schemaContent.trim() ? 'disabled' : ''}
+          >
+            <i class="fa-solid fa-check-double"></i>
+            <span>Validate</span>
+          </button>
+          <button
+            id="${MODULE_NAME}_fix_schema_btn"
+            class="menu_button menu_button_icon"
+            title="Auto-fix schema"
+            ${!showFixButton ? 'disabled' : ''}
+          >
+            <i class="fa-solid fa-wrench"></i>
+            <span>Auto-Fix</span>
+          </button>
+          <button
+            id="${MODULE_NAME}_format_schema_btn"
+            class="menu_button menu_button_icon"
+            title="Format/prettify JSON"
+            ${!schemaContent.trim() ? 'disabled' : ''}
+          >
+            <i class="fa-solid fa-align-left"></i>
+            <span>Format</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="${MODULE_NAME}_config_actions">
+        <div id="${MODULE_NAME}_token_estimate" class="${MODULE_NAME}_token_estimate ${tokenClass}">
+          ${tokenDisplay}
+        </div>
+        <button
+          id="${MODULE_NAME}_preview_prompt_btn"
+          class="menu_button"
+          title="Preview the complete prompt that will be sent"
+          ${!hasCharacter ? 'disabled' : ''}
+        >
+          <i class="fa-solid fa-eye"></i>
+          <span>Preview</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================================
+// UPDATE STATE
+// ============================================================================
+
+export function updateStageConfigState(
+    container: HTMLElement,
+    stage: StageName,
+    config: StageConfig,
+    isGenerating: boolean,
+    hasCharacter: boolean,
+    schemaValidation?: SchemaValidationResult,
+    resolvedSchemaContent?: string,  // NEW: pre-resolved content from updaters.ts
+): void {
+    const promptPresets = getPromptPresets(stage);
+    const schemaPresets = getSchemaPresets(stage);
+
+    // Update prompt preset select
+    const promptSelect = container.querySelector(`#${MODULE_NAME}_prompt_preset_select`) as HTMLSelectElement;
+    if (promptSelect) {
+        promptSelect.innerHTML = `<option value="">Custom</option>${renderPresetOptions(promptPresets, config.promptPresetId)}`;
+        promptSelect.value = config.promptPresetId || '';
+        promptSelect.disabled = isGenerating;
+    }
+
+    // Update prompt textarea
+    const promptTextarea = container.querySelector(`#${MODULE_NAME}_custom_prompt`) as HTMLTextAreaElement;
+    if (promptTextarea) {
+        let promptContent = config.customPrompt;
+        if (config.promptPresetId) {
+            const preset = getPromptPreset(config.promptPresetId);
+            if (preset) promptContent = preset.prompt;
+        }
+        if (promptTextarea.value !== promptContent) {
+            promptTextarea.value = promptContent;
+        }
+        promptTextarea.disabled = isGenerating;
+
+        const charCount = container.querySelector(`.${MODULE_NAME}_char_count`);
+        if (charCount) {
+            charCount.textContent = `${promptContent.length.toLocaleString()} chars`;
+        }
+    }
+
+    // Update structured output toggle
+    const structuredToggle = container.querySelector(`#${MODULE_NAME}_use_structured`) as HTMLInputElement;
+    if (structuredToggle) {
+        structuredToggle.checked = config.useStructuredOutput;
+        structuredToggle.disabled = isGenerating;
+    }
+
+    // Update schema section visibility
+    const schemaSection = container.querySelector(`.${MODULE_NAME}_schema_section`);
+    if (schemaSection) {
+        schemaSection.classList.toggle('hidden', !config.useStructuredOutput);
+    }
+
+    // Update schema preset select
+    const schemaSelect = container.querySelector(`#${MODULE_NAME}_schema_preset_select`) as HTMLSelectElement;
+    if (schemaSelect) {
+        schemaSelect.innerHTML = `<option value="">Custom</option>${renderPresetOptions(schemaPresets, config.schemaPresetId)}`;
+        schemaSelect.value = config.schemaPresetId || '';
+        schemaSelect.disabled = isGenerating;
+    }
+
+    // Use pre-resolved schema content if provided, otherwise resolve here
+    const schemaContent = resolvedSchemaContent ?? resolveSchemaContentLocal(config);
+
+    // Update schema textarea
+    const schemaTextarea = container.querySelector(`#${MODULE_NAME}_custom_schema`) as HTMLTextAreaElement;
+    if (schemaTextarea) {
+        if (schemaTextarea.value !== schemaContent) {
+            schemaTextarea.value = schemaContent;
+        }
+        schemaTextarea.disabled = isGenerating;
+    }
+
+    // Update schema validation status
+    updateSchemaValidationDisplay(container, schemaContent, config.useStructuredOutput, schemaValidation);
+
+    // Update schema action buttons
+    updateSchemaActionButtons(container, schemaContent, schemaValidation);
+
+    // Update preview button
+    const previewBtn = container.querySelector(`#${MODULE_NAME}_preview_prompt_btn`) as HTMLButtonElement;
+    if (previewBtn) {
+        previewBtn.disabled = isGenerating || !hasCharacter;
+    }
+
+    // Update save preset buttons
+    updateSavePresetButtons(container, config, promptTextarea?.value || '', schemaContent, schemaValidation);
+}
+
+// Local fallback for schema resolution (used by renderStageConfig)
+function resolveSchemaContentLocal(config: StageConfig): string {
+    if (config.schemaPresetId) {
+        const preset = getSchemaPreset(config.schemaPresetId);
+        if (preset) return JSON.stringify(preset.schema, null, 2);
+    }
+    return config.customSchema;
+}
+
+
+// ============================================================================
+// PRIVATE HELPERS
+// ============================================================================
+
+function renderPresetOptions(presets: (PromptPreset | SchemaPreset)[], selectedId: string | null): string {
+    return presets.map(p => {
+        const selected = p.id === selectedId ? 'selected' : '';
+        const icon = p.isBuiltin ? '📦' : '📝';
+        return `<option value="${p.id}" ${selected}>${icon} ${escapeHtml(p.name)}</option>`;
+    }).join('');
+}
+
+function updateSchemaValidationDisplay(
+    container: HTMLElement,
+    schemaContent: string,
+    useStructuredOutput: boolean,
+    schemaValidation?: SchemaValidationResult,
+): void {
+    const existingStatus = container.querySelector(`.${MODULE_NAME}_schema_status`);
+    if (existingStatus) {
+        existingStatus.remove();
+    }
+
+    if (!useStructuredOutput || !schemaContent.trim() || !schemaValidation) {
+        return;
+    }
+
+    let statusHtml = '';
+
+    if (!schemaValidation.valid) {
+        statusHtml = `<div class="${MODULE_NAME}_schema_status error"><i class="fa-solid fa-circle-xmark"></i> ${escapeHtml(schemaValidation.error || 'Invalid schema')}</div>`;
+    } else if (schemaValidation.warnings?.length) {
+        statusHtml = `<div class="${MODULE_NAME}_schema_status warning"><i class="fa-solid fa-triangle-exclamation"></i> ${schemaValidation.warnings.length} warning(s)</div>`;
+    } else {
+        statusHtml = `<div class="${MODULE_NAME}_schema_status success"><i class="fa-solid fa-circle-check"></i> Valid schema</div>`;
+    }
+
+    const schemaTextarea = container.querySelector(`#${MODULE_NAME}_custom_schema`);
+    if (schemaTextarea) {
+        schemaTextarea.insertAdjacentHTML('afterend', statusHtml);
+    }
+}
+
+function updateSchemaActionButtons(
+    container: HTMLElement,
+    schemaContent: string,
+    schemaValidation?: SchemaValidationResult,
+): void {
+    const validateBtn = container.querySelector(`#${MODULE_NAME}_validate_schema_btn`) as HTMLButtonElement;
+    const fixBtn = container.querySelector(`#${MODULE_NAME}_fix_schema_btn`) as HTMLButtonElement;
+    const formatBtn = container.querySelector(`#${MODULE_NAME}_format_schema_btn`) as HTMLButtonElement;
+
+    const hasContent = schemaContent.trim().length > 0;
+
+    if (validateBtn) {
+        validateBtn.disabled = !hasContent;
+    }
+
+    if (formatBtn) {
+        formatBtn.disabled = !hasContent;
+    }
+
+    if (fixBtn) {
+        if (hasContent && schemaValidation) {
+            const needsFix = (schemaValidation.warnings?.length ?? 0) > 0 || !schemaValidation.valid;
+            fixBtn.disabled = !needsFix;
+        } else {
+            fixBtn.disabled = true;
+        }
+    }
+}
+
+function updateSavePresetButtons(
+    container: HTMLElement,
+    config: StageConfig,
+    currentPrompt: string,
+    currentSchema: string,
+    schemaValidation?: SchemaValidationResult,
+): void {
+    const savePromptBtn = container.querySelector(`#${MODULE_NAME}_save_prompt_preset_btn`) as HTMLButtonElement;
+    const saveSchemaBtn = container.querySelector(`#${MODULE_NAME}_save_schema_preset_btn`) as HTMLButtonElement;
+
+    if (savePromptBtn) {
+        const presetPrompt = config.promptPresetId
+            ? getPromptPreset(config.promptPresetId)?.prompt || ''
+            : '';
+
+        const hasContent = currentPrompt.trim().length > 0;
+        const isDifferent = currentPrompt !== presetPrompt;
+        savePromptBtn.disabled = !hasContent || (config.promptPresetId !== null && !isDifferent);
+    }
+
+    if (saveSchemaBtn) {
+        const presetSchema = config.schemaPresetId
+            ? JSON.stringify(getSchemaPreset(config.schemaPresetId)?.schema, null, 2)
+            : '';
+
+        const hasContent = currentSchema.trim().length > 0;
+        const isDifferent = currentSchema !== presetSchema;
+        const isValid = hasContent && schemaValidation ? schemaValidation.valid : false;
+        saveSchemaBtn.disabled = !hasContent || !isValid || (config.schemaPresetId !== null && !isDifferent);
+    }
+}
+
+function escapeHtml(text: string): string {
+    const { DOMPurify } = SillyTavern.libs;
+    return DOMPurify.sanitize(text, { ALLOWED_TAGS: [] });
+}

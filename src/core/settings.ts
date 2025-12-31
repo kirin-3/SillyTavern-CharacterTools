@@ -10,7 +10,7 @@ import {
     BUILTIN_SCHEMA_PRESETS,
     SETTINGS_VERSION,
     CURRENT_PRESET_VERSION,
-} from './constants';
+} from '../constants';
 import type {
     Settings,
     GenerationConfig,
@@ -20,8 +20,8 @@ import type {
     SchemaPreset,
     StructuredOutputSchema,
     JsonSchemaValue,
-} from './types';
-import { debugLog } from './debug';
+} from '../types';
+import { debugLog } from '../debug';
 
 // ============================================================================
 // MIGRATION REGISTRY

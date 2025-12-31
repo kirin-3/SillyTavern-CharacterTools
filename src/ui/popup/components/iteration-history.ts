@@ -1,9 +1,10 @@
-// src/ui/components/iteration-history.ts
+// src/ui/popup/components/iteration-history.ts
 //
 // Iteration history display component
+// PURE RENDER/UPDATE FUNCTIONS ONLY - no state mutation, no action triggers
 
-import { MODULE_NAME } from '../../constants';
-import type { IterationSnapshot, IterationVerdict } from '../../types';
+import { MODULE_NAME } from '../../../constants';
+import type { IterationSnapshot, IterationVerdict } from '../../../types';
 
 // ============================================================================
 // RENDER
@@ -21,7 +22,6 @@ export function renderIterationHistory(
         return '';
     }
 
-    // Show loading state while history is being loaded
     let listContent: string;
     if (!historyLoaded) {
         listContent = `<div class="${MODULE_NAME}_iteration_loading">
@@ -48,7 +48,6 @@ export function renderIterationHistory(
     </div>
   `;
 }
-
 
 function renderIterationItem(snap: IterationSnapshot, index: number): string {
     const verdictIcon = getVerdictIcon(snap.verdict);
@@ -128,13 +127,10 @@ export function updateIterationHistoryState(
     const historyEl = container.querySelector(`#${MODULE_NAME}_iteration_history`);
 
     if (!historyEl && (history.length > 0 || currentIteration > 0)) {
-        // Need to add history panel
         const html = renderIterationHistory(history, currentIteration, historyLoaded);
         container.insertAdjacentHTML('beforeend', html);
-        // Attach collapse listener to the new element
-        attachCollapseListener(container);
+        // Note: Event binding is handled by index.ts, not here
     } else if (historyEl) {
-        // Update existing
         const countEl = historyEl.querySelector(`.${MODULE_NAME}_iteration_count`);
         if (countEl) {
             countEl.textContent = currentIteration > 0 ? `#${currentIteration + 1}` : 'Initial';
@@ -153,20 +149,6 @@ export function updateIterationHistoryState(
                 listEl.innerHTML = history.map((snap, i) => renderIterationItem(snap, i)).join('');
             }
         }
-    }
-}
-
-/**
- * Attach collapse toggle listener to iteration history header
- */
-function attachCollapseListener(container: HTMLElement): void {
-    const header = container.querySelector(`#${MODULE_NAME}_iteration_header_toggle`);
-    const historyEl = container.querySelector(`#${MODULE_NAME}_iteration_history`);
-
-    if (header && historyEl) {
-        header.addEventListener('click', () => {
-            historyEl.classList.toggle('collapsed');
-        });
     }
 }
 

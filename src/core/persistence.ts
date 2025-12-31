@@ -3,8 +3,8 @@
 // Session persistence layer using localforage.
 // Stores full pipeline sessions per-character with multi-session support.
 
-import { MODULE_NAME } from './constants';
-import { debugLog, logError } from './debug';
+import { MODULE_NAME } from '../constants';
+import { debugLog, logError } from '../debug';
 import { createStageConfigFromDefaults } from './presets';
 import { getPromptPreset, getSchemaPreset } from './settings';
 import type {
@@ -14,7 +14,7 @@ import type {
     PipelineState,
     StageName,
     StageConfig,
-} from './types';
+} from '../types';
 
 // Current storage version for migrations
 const STORAGE_VERSION = 2;

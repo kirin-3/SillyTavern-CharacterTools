@@ -14,11 +14,11 @@ import type {
     IterationSnapshot,
     IterationVerdict,
     FieldSelection,
-} from './types';
-import { STAGES, CHARACTER_FIELDS, MAX_ITERATION_HISTORY } from './constants';
+} from '../types';
+import { STAGES, CHARACTER_FIELDS, MAX_ITERATION_HISTORY } from '../constants';
 import { createStageConfigFromDefaults, resolvePrompt, resolveSchema, processPromptTemplate, promptHasPlaceholders } from './presets';
 import { getFullRefinementInstructions } from './settings';
-import { debugLog, logError } from './debug';
+import { debugLog, logError } from '../debug';
 import { getPopulatedFields, buildCharacterSummaryFromSelection } from './character';
 
 // ============================================================================

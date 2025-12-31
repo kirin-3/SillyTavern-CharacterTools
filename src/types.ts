@@ -329,19 +329,6 @@ export interface DebugLogEntry {
 }
 
 // ============================================================================
-// UI STATE
-// ============================================================================
-
-export interface PopupState {
-    isOpen: boolean;
-    isGenerating: boolean;
-    abortController: AbortController | null;
-    activePanel: 'main' | 'settings';
-    expandedFields: Set<string>;  // Character field keys that are expanded
-    historyLoaded: boolean;  // Track if we've loaded persisted iteration history
-}
-
-// ============================================================================
 // COMPONENT PROPS (for future component isolation)
 // ============================================================================
 

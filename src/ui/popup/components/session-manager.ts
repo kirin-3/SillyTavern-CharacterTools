@@ -2,8 +2,8 @@
 //
 // Session management UI component
 
-import { MODULE_NAME } from '../../constants';
-import type { PersistedSession } from '../../types';
+import { MODULE_NAME } from '../../../constants';
+import type { PersistedSession } from '../../../types';
 
 // ============================================================================
 // RENDER

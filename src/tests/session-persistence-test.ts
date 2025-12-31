@@ -12,7 +12,7 @@ import {
     deselectAllFields,
     updateStageConfig,
     extractVerdict,
-} from '../pipeline';
+} from '../core/pipeline';
 import {
     loadCharacterSessions,
     saveSession,
@@ -25,8 +25,8 @@ import {
     getCharacterKey,
     hasAnySessions,
     getSessionCount,
-} from '../persistence';
-import { createStageConfigFromDefaults } from '../presets';
+} from '../core/persistence';
+import { createStageConfigFromDefaults } from '../core/presets';
 import type { Character, PipelineState, FieldSelection, StageConfig } from '../types';
 
 /**

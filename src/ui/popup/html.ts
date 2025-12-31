@@ -2,7 +2,7 @@
 // Popup HTML template
 
 import { MODULE_NAME, STAGE_ICONS } from '../../constants';
-import { getApiInfo } from '../../generator';
+import { getApiInfo } from '../../core/generator';
 
 export function buildPopupContent(): string {
     const apiInfo = getApiInfo();

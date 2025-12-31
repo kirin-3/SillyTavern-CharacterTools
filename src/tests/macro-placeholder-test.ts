@@ -1,7 +1,7 @@
 // src/tests/macro-placeholder-test.ts
 
-import { processPromptTemplate, promptHasPlaceholders } from '../presets';
-import { buildStagePrompt, buildRefinementPrompt, createPipelineState, setCharacter, completeStage, initializeFieldSelection } from '../pipeline';
+import { processPromptTemplate, promptHasPlaceholders } from '../core/presets';
+import { buildStagePrompt, buildRefinementPrompt, createPipelineState, setCharacter, completeStage, initializeFieldSelection } from '../core/pipeline';
 import type { Character, TemplateContext } from '../types';
 
 /**

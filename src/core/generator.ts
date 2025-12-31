@@ -4,13 +4,13 @@
 // Supports both ST's current settings and custom API configuration.
 
 import { getSettings, getFullSystemPrompt } from './settings';
-import { debugLog, logError } from './debug';
+import { debugLog, logError } from '../debug';
 import type {
     StructuredOutputSchema,
     GenerationResult,
     PipelineState,
     StageName,
-} from './types';
+} from '../types';
 import { buildStagePrompt, buildRefinementPrompt, getStageSchema } from './pipeline';
 
 // ============================================================================

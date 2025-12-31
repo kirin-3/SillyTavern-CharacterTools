@@ -1,5 +1,5 @@
 // src/schema.ts
-import type { StructuredOutputSchema, SchemaValidationResult, JsonSchemaValue } from './types';
+import type { StructuredOutputSchema, SchemaValidationResult, JsonSchemaValue } from '../types';
 
 // ============================================================================
 // PROVIDER LIMITS

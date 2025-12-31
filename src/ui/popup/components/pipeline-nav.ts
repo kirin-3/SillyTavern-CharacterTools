@@ -2,8 +2,8 @@
 //
 // Pipeline stage selection and navigation component
 
-import { MODULE_NAME, STAGES, STAGE_LABELS, STAGE_ICONS } from '../../constants';
-import type { StageName, StageStatus } from '../../types';
+import { MODULE_NAME, STAGES, STAGE_LABELS, STAGE_ICONS } from '../../../constants';
+import type { StageName, StageStatus } from '../../../types';
 
 // ============================================================================
 // RENDER

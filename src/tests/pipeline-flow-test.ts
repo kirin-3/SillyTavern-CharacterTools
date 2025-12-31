@@ -10,7 +10,7 @@ import {
     startRefinement,
     completeRefinement,
     generateExportData,
-} from '../pipeline';
+} from '../core/pipeline';
 import type { Character } from '../types';
 
 /**

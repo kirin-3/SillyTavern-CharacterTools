@@ -2,10 +2,10 @@
 //
 // Results display and actions component
 
-import { MODULE_NAME, STAGE_LABELS } from '../../constants';
-import { formatResponse, formatStructuredResponse } from '../formatter';
-import { canExport, canRefine, extractVerdict } from '../../pipeline';
-import type { StageName, StageStatus, StageResult, PipelineState, IterationVerdict } from '../../types';
+import { MODULE_NAME, STAGE_LABELS } from '../../../constants';
+import { formatResponse, formatStructuredResponse } from '../../formatter';
+import { canExport, canRefine, extractVerdict } from '../../../core/pipeline';
+import type { StageName, StageStatus, StageResult, PipelineState, IterationVerdict } from '../../../types';
 
 // ============================================================================
 // RENDER

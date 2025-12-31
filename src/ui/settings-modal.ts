@@ -28,7 +28,7 @@ import {
     deleteSchemaPreset,
     exportCustomPresets,
     importPresets,
-} from '../settings';
+} from '../core/settings';
 import { debugLog, getDebugLogs, clearDebugLogs, formatLogEntry, formatLogData, exportDebugInfo } from '../debug';
 import type { GenerationConfig } from '../types';
 
@@ -95,7 +95,7 @@ function buildSettingsContent(): string {
             </div>
 
             <div class="${MODULE_NAME}_settings_row">
-              <label class="${MODULE_NAME}_checkbox_label">
+              <label class="checkbox_label">
                 <input
                   type="checkbox"
                   id="${MODULE_NAME}_use_current_settings"
@@ -312,7 +312,7 @@ function buildSettingsContent(): string {
             </div>
 
             <div class="${MODULE_NAME}_settings_row">
-              <label class="${MODULE_NAME}_checkbox_label">
+              <label class="checkbox_label">
                 <input
                   type="checkbox"
                   id="${MODULE_NAME}_debug_mode"

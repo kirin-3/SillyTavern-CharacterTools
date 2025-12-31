@@ -924,14 +924,6 @@
   opacity: 1;
 }
 
-.character_tools_checkbox_label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 0.85em;
-}
-
 /* ============================================================================
    RESULTS PANEL
    ============================================================================ */

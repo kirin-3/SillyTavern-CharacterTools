@@ -1,52 +1,11 @@
-// src/ui/components/character-select.ts
+// src/ui/popup/components/character-select.ts
 //
 // Character search and preview component with field selection
+// PURE RENDER/UPDATE FUNCTIONS ONLY - no state mutation, no action triggers
 
-import { MODULE_NAME } from '../../constants';
-import { getPopulatedFields } from '../../character';
-import type { Character, PopulatedField, FieldSelection } from '../../types';
-
-// ============================================================================
-// TOKEN CACHE
-// ============================================================================
-
-const MAX_TOKEN_CACHE_SIZE = 500;
-let tokenCache: Map<string, number> | null = null;
-
-function getTokenCache(): Map<string, number> {
-    if (!tokenCache) {
-        tokenCache = new Map();
-    }
-    return tokenCache;
-}
-
-function getTokenCacheKey(content: string): string {
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-        const char = content.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-    }
-    return `${hash}_${content.length}`;
-}
-
-function addToTokenCache(key: string, value: number): void {
-    const cache = getTokenCache();
-    if (cache.size >= MAX_TOKEN_CACHE_SIZE) {
-        const firstKey = cache.keys().next().value;
-        if (firstKey !== undefined) {
-            cache.delete(firstKey);
-        }
-    }
-    cache.set(key, value);
-}
-
-/**
- * Clear the token cache. Call when popup closes to free memory.
- */
-export function clearTokenCache(): void {
-    tokenCache?.clear();
-}
+import { MODULE_NAME } from '../../../constants';
+import { getPopulatedFields } from '../../../core/character';
+import type { Character, PopulatedField, FieldSelection } from '../../../types';
 
 // ============================================================================
 // RENDER
@@ -93,7 +52,6 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
     const fields = getPopulatedFields(char);
     const avatar = getThumbnailUrl('avatar', char.avatar);
 
-    // Count selected fields
     const selectedCount = Object.entries(selectedFields).filter(([, v]) =>
         v === true || (Array.isArray(v) && v.length > 0),
     ).length;
@@ -137,8 +95,6 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
   `;
 }
 
-
-
 /**
  * Render a single field row with selection checkbox
  */
@@ -180,8 +136,6 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): 
     </div>
   `;
 }
-
-
 
 /**
  * Render alternate greetings with individual selection
@@ -255,9 +209,7 @@ export function updateCharacterSelectState(
                 searchEl.insertAdjacentHTML('afterend', previewHtml);
             }
         } else {
-            // Update field checkboxes
             updateFieldCheckboxes(container, selectedFields);
-            // Update selected count
             updateSelectedCount(container, character, selectedFields);
         }
     } else {
@@ -275,7 +227,6 @@ export function updateCharacterSelectState(
  * Update field checkbox states
  */
 function updateFieldCheckboxes(container: HTMLElement, selectedFields: FieldSelection): void {
-    // Update main field checkboxes
     container.querySelectorAll(`.${MODULE_NAME}_field_checkbox`).forEach(el => {
         const checkbox = el as HTMLInputElement;
         const fieldKey = checkbox.dataset.field!;
@@ -289,7 +240,6 @@ function updateFieldCheckboxes(container: HTMLElement, selectedFields: FieldSele
         }
     });
 
-    // Update alt greeting checkboxes
     container.querySelectorAll(`.${MODULE_NAME}_alt_greeting_checkbox`).forEach(el => {
         const checkbox = el as HTMLInputElement;
         const fieldKey = checkbox.dataset.field!;
@@ -299,7 +249,6 @@ function updateFieldCheckboxes(container: HTMLElement, selectedFields: FieldSele
         checkbox.checked = Array.isArray(indices) && indices.includes(index);
     });
 }
-
 
 /**
  * Update selected field count display
@@ -319,52 +268,7 @@ function updateSelectedCount(container: HTMLElement, character: Character, selec
 }
 
 /**
- * Update token counts for character fields and total.
- */
-export async function updateFieldTokenCounts(container: HTMLElement, fields: PopulatedField[]): Promise<void> {
-    const { getTokenCountAsync } = SillyTavern.getContext();
-    const cache = getTokenCache();
-
-    const tokenPromises = fields.map(async (field) => {
-        const cacheKey = getTokenCacheKey(field.value);
-
-        if (cache.has(cacheKey)) {
-            return { field, tokens: cache.get(cacheKey)! };
-        }
-
-        try {
-            const tokens = await getTokenCountAsync(field.value);
-            addToTokenCache(cacheKey, tokens);
-            return { field, tokens };
-        } catch {
-            return { field, tokens: null };
-        }
-    });
-
-    const results = await Promise.all(tokenPromises);
-
-    let totalTokens = 0;
-
-    for (const { field, tokens } of results) {
-        const tokenSpan = container.querySelector(`.${MODULE_NAME}_field_tokens[data-field="${field.key}"]`);
-        if (tokenSpan) {
-            if (tokens !== null) {
-                totalTokens += tokens;
-                tokenSpan.textContent = `${tokens.toLocaleString()}t`;
-            } else {
-                tokenSpan.textContent = '?';
-            }
-        }
-    }
-
-    const totalSpan = container.querySelector(`#${MODULE_NAME}_total_tokens`);
-    if (totalSpan) {
-        totalSpan.textContent = `${totalTokens.toLocaleString()} tokens`;
-    }
-}
-
-/**
- * Render dropdown items - called from popup.ts
+ * Render dropdown items - called from actions.ts
  */
 export function renderDropdownItems(
     results: Array<{ char: Character; index: number }>,

@@ -10,7 +10,7 @@ import type {
     SchemaPreset,
     StructuredOutputSchema,
     TemplateContext,
-} from './types';
+} from '../types';
 import {
     getSettings,
     getPromptPreset,
@@ -19,8 +19,8 @@ import {
     getSchemaPresets,
 } from './settings';
 import { validateSchema, formatSchema } from './schema';
-import { TEMPLATE_PLACEHOLDERS, DEFAULT_STAGE_DEFAULTS } from './constants';
-import { debugLog } from './debug';
+import { TEMPLATE_PLACEHOLDERS, DEFAULT_STAGE_DEFAULTS } from '../constants';
+import { debugLog } from '../debug';
 
 // ============================================================================
 // STAGE CONFIG RESOLUTION

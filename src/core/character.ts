@@ -2,8 +2,8 @@
 //
 // Character utilities - field extraction, formatting, etc.
 
-import { CHARACTER_FIELDS } from './constants';
-import type { Character, CharacterField, PopulatedField, DepthPrompt, CharacterBook, FieldSelection } from './types';
+import { CHARACTER_FIELDS } from '../constants';
+import type { Character, CharacterField, PopulatedField, DepthPrompt, CharacterBook, FieldSelection } from '../types';
 
 // ============================================================================
 // FIELD VALUE EXTRACTION
