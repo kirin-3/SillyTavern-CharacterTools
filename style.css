@@ -1384,34 +1384,66 @@
    SESSION MANAGER
    ============================================================================ */
 
+#character_tools_session_container {
+  /* Container for the session manager, no extra styling needed */
+}
+
+#character_tools_session_container.hidden {
+  display: none;
+}
+
 .character_tools_session_manager {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ct-gap-sm);
-  flex-shrink: 0;
+  background: var(--SmartThemeBlurTintColor);
+  border: 1px solid var(--SmartThemeBorderColor);
+  border-radius: var(--ct-radius);
+  overflow: hidden;
 }
 
 .character_tools_session_header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: var(--ct-gap-sm);
+  padding: 8px 10px;
+  background: var(--SmartThemeChatTintColor);
+  border-bottom: 1px solid transparent;
+  min-height: 40px;
 }
 
-.character_tools_session_title {
+.character_tools_session_manager.expanded .character_tools_session_header {
+  border-bottom-color: var(--SmartThemeBorderColor);
+}
+
+.character_tools_session_header_left {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 500;
-  font-size: 0.85em;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
 }
 
-.character_tools_session_header_actions {
-  display: flex;
-  gap: var(--ct-gap-xs);
+.character_tools_session_header_left:hover {
+  opacity: 0.8;
 }
 
-.character_tools_unsaved_indicator {
+.character_tools_session_header_left i:first-child {
+  color: var(--SmartThemeQuoteColor);
+  width: 16px;
+  text-align: center;
+}
+
+.character_tools_session_title_text {
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.character_tools_session_loading_icon {
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.character_tools_unsaved_dot {
   color: var(--ct-warning);
   font-size: 0.8em;
   animation: pulse 2s infinite;
@@ -1422,72 +1454,48 @@
   50% { opacity: 0.5; }
 }
 
-/* Session List - Collapsible */
-.character_tools_session_list_details {
-  background: var(--SmartThemeChatTintColor);
-  border: 1px solid var(--SmartThemeBorderColor);
-  border-radius: var(--ct-radius-sm);
-}
-
-.character_tools_session_list_summary {
+.character_tools_session_header_actions {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 0.8em;
-  font-weight: 500;
-  user-select: none;
-  list-style: none;
-  background: var(--SmartThemeBlurTintColor);
-  border-radius: var(--ct-radius-sm);
-  transition: background var(--ct-transition);
+  gap: 2px;
+  flex-shrink: 0;
 }
 
-.character_tools_session_list_details[open] .character_tools_session_list_summary {
-  border-radius: var(--ct-radius-sm) var(--ct-radius-sm) 0 0;
-  border-bottom: 1px solid var(--SmartThemeBorderColor);
+.character_tools_session_header_actions .character_tools_icon_btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
 }
 
-.character_tools_session_list_summary::-webkit-details-marker {
+/* List Container */
+.character_tools_session_list_container {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.character_tools_session_list_container.hidden {
   display: none;
 }
 
-.character_tools_session_list_summary:hover {
-  background: var(--SmartThemeBorderColor);
-}
-
-.character_tools_session_list_details[open] .character_tools_session_list_summary i {
-  transform: rotate(180deg);
-}
-
-.character_tools_session_list_summary i {
-  transition: transform var(--ct-transition);
-  font-size: 0.75em;
-  opacity: 0.6;
-}
-
 .character_tools_session_list {
-  /* No max-height - controlled by details open state */
+  display: flex;
+  flex-direction: column;
 }
 
-.character_tools_session_empty,
-.character_tools_session_loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ct-gap-sm);
+.character_tools_session_empty {
   padding: var(--ct-gap);
   text-align: center;
-  opacity: 0.6;
+  opacity: 0.5;
   font-size: 0.85em;
 }
 
+/* Session Item */
 .character_tools_session_item {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ct-gap-sm);
+  padding: 8px 10px;
   border-bottom: 1px solid var(--SmartThemeBorderColor);
   transition: background var(--ct-transition);
 }
@@ -1501,22 +1509,34 @@
 }
 
 .character_tools_session_item.active {
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 15%, transparent);
-  border-left: 3px solid var(--SmartThemeQuoteColor);
-  padding-left: 5px;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
 }
 
-.character_tools_session_item_main {
+.character_tools_session_item_left {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: var(--ct-gap-sm);
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.character_tools_session_indicator {
+  font-size: 0.6em;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.character_tools_session_item.active .character_tools_session_indicator {
+  color: var(--SmartThemeQuoteColor);
+  opacity: 1;
 }
 
 .character_tools_session_item_info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
   flex: 1;
 }
@@ -1551,57 +1571,25 @@
   font-size: 0.75em;
 }
 
-.character_tools_session_active_badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  border-radius: var(--ct-radius-sm);
-  font-size: 0.65em;
-  font-weight: 600;
-  background: var(--SmartThemeQuoteColor);
-  color: var(--SmartThemeBlurTintColor);
-  text-transform: uppercase;
-}
-
-.character_tools_session_preview {
-  display: flex;
-  align-items: center;
-  gap: var(--ct-gap-sm);
-  padding-left: 4px;
-}
-
-.character_tools_session_stages {
-  display: flex;
-  gap: 6px;
-  font-size: 0.75em;
-  opacity: 0.7;
-}
-
-.character_tools_session_stages i {
-  width: 14px;
-  text-align: center;
-}
-
-.character_tools_session_footer {
+/* List Footer */
+.character_tools_session_list_footer {
   display: flex;
   justify-content: flex-end;
-  padding-top: var(--ct-gap-xs);
+  padding: 6px 10px;
   border-top: 1px solid var(--SmartThemeBorderColor);
+  background: var(--SmartThemeBlurTintColor);
 }
 
-.character_tools_session_footer .menu_button {
+.character_tools_session_list_footer .menu_button {
   font-size: 0.75em;
   padding: 4px 8px;
   opacity: 0.7;
 }
 
-.character_tools_session_footer .menu_button:hover {
+.character_tools_session_list_footer .menu_button:hover {
   opacity: 1;
 }
 
-#character_tools_session_section.hidden {
-  display: none;
-}
 
 /* ============================================================================
    SETTINGS MODAL

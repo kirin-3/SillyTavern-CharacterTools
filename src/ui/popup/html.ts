@@ -41,14 +41,8 @@ export function buildPopupContent(): string {
             <div id="${MODULE_NAME}_character_select_container"></div>
           </div>
 
-          <!-- SESSION SECTION - NEW -->
-          <div class="${MODULE_NAME}_section hidden" id="${MODULE_NAME}_session_section">
-            <div class="${MODULE_NAME}_section_header">
-              <i class="fa-solid fa-folder-open"></i>
-              <span>Sessions</span>
-            </div>
-            <div id="${MODULE_NAME}_session_manager_container"></div>
-          </div>
+          <!-- Session Manager - no wrapper section, component is self-contained -->
+          <div id="${MODULE_NAME}_session_container" class="hidden"></div>
 
           <div class="${MODULE_NAME}_section" id="${MODULE_NAME}_pipeline_section">
             <div class="${MODULE_NAME}_section_header">

@@ -29,6 +29,7 @@ export interface PopupState {
     sessionsLoaded: boolean;
     hasUnsavedChanges: boolean;
     lastSavedAt: number | null;
+    sessionListExpanded: boolean;  // NEW: Track collapse state
 
     // History loading state
     historyLoaded: boolean;
@@ -92,6 +93,7 @@ export function createInitialState(): PopupState {
         sessionsLoaded: false,
         hasUnsavedChanges: false,
         lastSavedAt: null,
+        sessionListExpanded: false,  // NEW: Default collapsed
 
         // History loading
         historyLoaded: true,

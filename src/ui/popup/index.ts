@@ -138,12 +138,14 @@ function initComponents(characters: Character[]): void {
     }
 
     // Session manager
-    const sessionContainer = el.querySelector(`#${MODULE_NAME}_session_manager_container`);
+    const sessionContainer = el.querySelector(`#${MODULE_NAME}_session_container`);
     if (sessionContainer) {
         sessionContainer.innerHTML = renderSessionManager(
             state.sessions,
             state.activeSessionId,
             state.hasUnsavedChanges,
+            state.sessionListExpanded,
+            !state.sessionsLoaded,
         );
     }
 
@@ -342,12 +344,22 @@ function initCharacterSectionEvents(container: HTMLElement): void {
 // SESSION SECTION EVENTS
 // ============================================================================
 
-function initSessionSectionEvents(container: HTMLElement): void {
-    const sessionSection = container.querySelector(`#${MODULE_NAME}_session_section`);
-    if (!sessionSection) return;
+// ============================================================================
+// SESSION SECTION EVENTS
+// ============================================================================
 
-    sessionSection.addEventListener('click', async (e) => {
+function initSessionSectionEvents(container: HTMLElement): void {
+    const sessionContainer = container.querySelector(`#${MODULE_NAME}_session_container`);
+    if (!sessionContainer) return;
+
+    sessionContainer.addEventListener('click', async (e) => {
         const target = e.target as HTMLElement;
+
+        // Toggle expand/collapse - either the toggle button or clicking the left side of header
+        if (target.closest(`#${MODULE_NAME}_session_toggle_btn`) || target.closest(`#${MODULE_NAME}_session_toggle`)) {
+            actions.toggleSessionListExpanded();
+            return;
+        }
 
         // Save session
         if (target.closest(`#${MODULE_NAME}_save_session_btn`)) {
@@ -398,6 +410,7 @@ function initSessionSectionEvents(container: HTMLElement): void {
         }
     });
 }
+
 
 // ============================================================================
 // PIPELINE SECTION EVENTS

@@ -249,9 +249,10 @@ export function updateSessionManager(): void {
     const state = getState();
     if (!el || !state) return;
 
-    const container = el.querySelector(`#${MODULE_NAME}_session_section`);
+    const container = el.querySelector(`#${MODULE_NAME}_session_container`);
     if (!container) return;
 
+    // Hide if no character selected
     if (!state.pipeline.character) {
         container.classList.add('hidden');
         return;
@@ -259,31 +260,26 @@ export function updateSessionManager(): void {
 
     container.classList.remove('hidden');
 
-    const managerContainer = container.querySelector(`#${MODULE_NAME}_session_manager_container`);
-    if (managerContainer) {
-        if (!state.sessionsLoaded) {
-            managerContainer.innerHTML = `
-                <div class="${MODULE_NAME}_session_loading">
-                    <i class="fa-solid fa-spinner fa-spin"></i>
-                    <span>Loading sessions...</span>
-                </div>
-            `;
-        } else {
-            const existingManager = managerContainer.querySelector(`#${MODULE_NAME}_session_manager`);
-            if (existingManager) {
-                updateSessionManagerState(
-                    managerContainer as HTMLElement,
-                    state.sessions,
-                    state.activeSessionId,
-                    state.hasUnsavedChanges,
-                );
-            } else {
-                managerContainer.innerHTML = renderSessionManager(
-                    state.sessions,
-                    state.activeSessionId,
-                    state.hasUnsavedChanges,
-                );
-            }
-        }
+    const existingManager = container.querySelector(`#${MODULE_NAME}_session_manager`);
+
+    if (existingManager) {
+        // Update existing
+        updateSessionManagerState(
+            container as HTMLElement,
+            state.sessions,
+            state.activeSessionId,
+            state.hasUnsavedChanges,
+            state.sessionListExpanded,
+            !state.sessionsLoaded,
+        );
+    } else {
+        // Initial render
+        container.innerHTML = renderSessionManager(
+            state.sessions,
+            state.activeSessionId,
+            state.hasUnsavedChanges,
+            state.sessionListExpanded,
+            !state.sessionsLoaded,
+        );
     }
 }

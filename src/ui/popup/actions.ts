@@ -916,6 +916,14 @@ export function toggleIterationHistoryCollapse(): void {
     historyEl?.classList.toggle('collapsed');
 }
 
+export function toggleSessionListExpanded(): void {
+    const state = getState();
+    if (!state) return;
+
+    updateState(s => ({ sessionListExpanded: !s.sessionListExpanded }));
+    updateSessionManager();
+}
+
 // ============================================================================
 // SESSION ACTIONS
 // ============================================================================
