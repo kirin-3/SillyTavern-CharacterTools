@@ -564,7 +564,8 @@ export async function runSingleStage(stage: StageName): Promise<void> {
     } finally {
         updateState(() => ({ isGenerating: false }));
         abortController = null;
-        updateAllComponents();
+        // Use setTimeout to break out of any potential update cycle
+        setTimeout(() => updateAllComponents(), 0);
     }
 }
 
@@ -620,6 +621,9 @@ export async function runSelectedStages(): Promise<void> {
             break;
         }
     }
+
+    // Final UI sync after all stages complete or abort
+    setTimeout(() => updateAllComponents(), 0);
 }
 
 export async function runAllStages(): Promise<void> {
@@ -631,6 +635,7 @@ export async function runAllStages(): Promise<void> {
     updateResultsPanel();
 
     await runSelectedStages();
+    // runSelectedStages already has the setTimeout at the end
 }
 
 export async function runRefinement(): Promise<void> {
@@ -745,7 +750,8 @@ export async function runRefinement(): Promise<void> {
     } finally {
         updateState(() => ({ isRefining: false }));
         abortController = null;
-        updateAllComponents();
+        // Use setTimeout to break out of any potential update cycle
+        setTimeout(() => updateAllComponents(), 0);
     }
 }
 
