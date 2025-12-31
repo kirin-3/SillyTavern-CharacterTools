@@ -164,7 +164,9 @@
   gap: 10px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1 1 0;
 }
 
 #character_tools_character_section,
@@ -173,17 +175,19 @@
 }
 
 #character_tools_stage_section {
-  flex: 1 1 0;
+  flex: 0 1 auto;
   min-height: 150px;
-  overflow: hidden;
+  max-height: none;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
 
 #character_tools_stage_config_container {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .character_tools_right_column {
@@ -255,18 +259,21 @@
   flex-direction: column;
   gap: var(--ct-gap-sm);
   min-width: 0;
+  min-height: 0;
   background: var(--SmartThemeBlurTintColor);
   border: 1px solid var(--SmartThemeBorderColor);
   border-radius: var(--ct-radius);
   padding: 10px;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .character_tools_section_grow {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 200px;
-  flex-shrink: 1;
-  overflow: hidden;
+  max-height: none;
+  flex-shrink: 0;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -293,38 +300,18 @@
 }
 
 /* ============================================================================
-   MENU BUTTON OVERRIDES
+   MENU BUTTON OVERRIDES - Minimal, inherit from ST
    ============================================================================ */
 
 .character_tools_popup .menu_button,
 .character_tools_settings_modal .menu_button {
+  /* ST's .menu_button already handles most styling */
+  /* Only add what's absolutely necessary */
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 10px;
-  min-height: 32px;
-  background: var(--SmartThemeBlurTintColor);
-  border: 1px solid var(--SmartThemeBorderColor);
-  border-radius: var(--ct-radius-sm);
-  color: inherit;
-  font-family: inherit;
-  font-size: 0.85em;
-  cursor: pointer;
-  transition: background var(--ct-transition), border-color var(--ct-transition);
   white-space: nowrap;
-}
-
-.character_tools_popup .menu_button:hover,
-.character_tools_settings_modal .menu_button:hover {
-  background: var(--SmartThemeBorderColor);
-}
-
-.character_tools_popup .menu_button:disabled,
-.character_tools_settings_modal .menu_button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
 }
 
 /* ============================================================================
@@ -383,9 +370,9 @@
   z-index: 1;
 }
 
+/* Use ST's .text_pole class on the input element itself */
 .character_tools_search_input {
   padding-inline-start: 32px !important;
-  width: 100%;
 }
 
 /* Dropdown */
@@ -514,9 +501,11 @@
 
 /* Character Fields */
 .character_tools_char_fields {
-  max-height: 120px;
+  max-height: 200px;
   overflow-y: auto;
+  overflow-x: hidden;
   border-block-start: 1px solid var(--SmartThemeBorderColor);
+  flex-shrink: 0;
 }
 
 .character_tools_field_row {
@@ -550,11 +539,9 @@
   flex-shrink: 0;
 }
 
+/* Use native checkbox styling - no custom styles needed */
 .character_tools_field_checkbox {
-  width: 14px;
-  height: 14px;
   flex-shrink: 0;
-  accent-color: var(--SmartThemeQuoteColor);
 }
 
 .character_tools_field_toggle {
@@ -615,12 +602,10 @@
   gap: 6px;
 }
 
+/* Use native checkbox - no custom styling */
 .character_tools_alt_greeting_checkbox {
-  width: 14px;
-  height: 14px;
   flex-shrink: 0;
   margin-block-start: 2px;
-  accent-color: var(--SmartThemeQuoteColor);
 }
 
 .character_tools_alt_greeting_content {
@@ -669,11 +654,9 @@
   min-width: 0;
 }
 
+/* Use native checkbox - no custom styling */
 .character_tools_stage_checkbox {
-  width: 16px;
-  height: 16px;
   cursor: pointer;
-  accent-color: var(--SmartThemeQuoteColor);
   flex-shrink: 0;
 }
 
@@ -751,6 +734,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--ct-gap-sm);
+  min-height: 0;
 }
 
 .character_tools_config_group {
@@ -784,35 +768,29 @@
   font-size: 0.85em;
 }
 
+/* Use native select - minimal override */
 .character_tools_preset_select {
   flex: 1;
   min-width: 100px;
   max-width: 200px;
-  padding-inline-end: 24px;
   font-size: 0.85em;
-  text-overflow: ellipsis;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23888' d='M5 7L1 3h8z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 10px;
-  cursor: pointer;
 }
 
+/* Textareas - use ST's native styling, just set dimensions */
 .character_tools_prompt_textarea,
 .character_tools_schema_textarea {
-  width: 100%;
   resize: vertical;
-  font-size: 0.85em;
-  line-height: 1.4;
+  max-width: 100%;
 }
 
 .character_tools_prompt_textarea {
   min-height: 80px;
+  max-height: 300px;
 }
 
 .character_tools_schema_textarea {
   min-height: 60px;
+  max-height: 200px;
   font-family: var(--monoFontFamily);
   font-size: 0.8em;
 }
@@ -906,20 +884,13 @@
   opacity: 1;
 }
 
-/* Checkbox Label */
+/* Checkbox Label - use ST pattern */
 .character_tools_checkbox_label {
   display: flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   font-size: 0.85em;
-}
-
-.character_tools_checkbox_label input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  accent-color: var(--SmartThemeQuoteColor);
-  flex-shrink: 0;
 }
 
 /* ============================================================================
@@ -1070,6 +1041,9 @@
   background: var(--SmartThemeChatTintColor);
   overflow: hidden;
   flex-shrink: 0;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
 }
 
 .character_tools_iteration_header {
@@ -1090,8 +1064,11 @@
 }
 
 .character_tools_iteration_list {
-  max-height: 120px;
+  max-height: none;
   overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .character_tools_iteration_empty,
@@ -1373,10 +1350,7 @@
   opacity: 0.8;
 }
 
-.character_tools_settings_field .text_pole {
-  min-width: 0;
-  width: 100%;
-}
+/* Use ST's .text_pole on input elements - no custom styling needed */
 
 .character_tools_system_prompt_textarea {
   resize: vertical;
@@ -2021,6 +1995,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--ct-gap-sm);
+  flex-shrink: 0;
 }
 
 .character_tools_session_header {
@@ -2058,11 +2033,13 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 150px;
+  max-height: 200px;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--SmartThemeChatTintColor);
   border: 1px solid var(--SmartThemeBorderColor);
   border-radius: var(--ct-radius-sm);
+  flex-shrink: 0;
 }
 
 .character_tools_session_empty,
@@ -2244,6 +2221,18 @@
   .character_tools_hero_value {
     font-size: 1.8em;
   }
+
+  .character_tools_char_fields {
+    max-height: 250px;
+  }
+
+  .character_tools_iteration_history {
+    max-height: 250px;
+  }
+
+  .character_tools_session_list {
+    max-height: 250px;
+  }
 }
 
 /* ============================================================================
@@ -2261,6 +2250,8 @@
     max-width: 500px;
     height: 100%;
     max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .character_tools_right_column {
@@ -2269,24 +2260,35 @@
   }
 
   .character_tools_char_fields {
-    max-height: 180px;
+    max-height: 300px;
   }
 
   .character_tools_prompt_textarea {
     min-height: 120px;
+    max-height: 400px;
   }
 
   .character_tools_schema_textarea {
     min-height: 80px;
+    max-height: 250px;
   }
 
   #character_tools_stage_section {
-    flex: 1;
+    flex: 0 1 auto;
     min-height: 250px;
+    max-height: none;
   }
 
   .character_tools_iteration_list {
-    max-height: 150px;
+    max-height: none;
+  }
+
+  .character_tools_iteration_history {
+    max-height: 300px;
+  }
+
+  .character_tools_session_list {
+    max-height: 300px;
   }
 
   .character_tools_preview_content {
@@ -2317,6 +2319,18 @@
     flex: 0 0 35%;
     max-width: 550px;
   }
+
+  .character_tools_char_fields {
+    max-height: 350px;
+  }
+
+  .character_tools_iteration_history {
+    max-height: 350px;
+  }
+
+  .character_tools_session_list {
+    max-height: 350px;
+  }
 }
 
 /* ============================================================================
@@ -2338,15 +2352,28 @@
   }
 
   .character_tools_char_fields {
-    max-height: 80px;
+    max-height: 120px;
   }
 
   .character_tools_prompt_textarea {
     min-height: 60px;
+    max-height: 150px;
+  }
+
+  .character_tools_schema_textarea {
+    max-height: 120px;
   }
 
   .character_tools_iteration_list {
-    max-height: 80px;
+    max-height: none;
+  }
+
+  .character_tools_iteration_history {
+    max-height: 150px;
+  }
+
+  .character_tools_session_list {
+    max-height: 150px;
   }
 }
 
@@ -2360,11 +2387,15 @@
   }
 
   .character_tools_char_fields {
-    max-height: 60px;
+    max-height: 80px;
   }
 
   .character_tools_iteration_history {
-    display: none;
+    max-height: 100px;
+  }
+
+  .character_tools_session_list {
+    max-height: 100px;
   }
 }
 

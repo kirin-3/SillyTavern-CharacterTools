@@ -145,20 +145,23 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): 
         isSelected = !!selectedFields[field.key];
     }
 
+    const fieldId = `${MODULE_NAME}_field_${field.key}`;
+
     return `
     <div class="${MODULE_NAME}_field_row">
       <div class="${MODULE_NAME}_field_header">
         <input
           type="checkbox"
+          id="${fieldId}"
           class="${MODULE_NAME}_field_checkbox"
           data-field="${field.key}"
           ${isSelected ? 'checked' : ''}
           ${isAltGreetings ? 'data-is-array="true"' : ''}
         >
-        <div class="${MODULE_NAME}_field_toggle" data-field="${field.key}">
+        <label class="${MODULE_NAME}_field_toggle" for="${fieldId}" data-field="${field.key}">
           <i class="fa-solid fa-chevron-right"></i>
           <span class="${MODULE_NAME}_field_label">${field.label}</span>
-        </div>
+        </label>
         <span class="${MODULE_NAME}_field_tokens" data-field="${field.key}">...</span>
       </div>
       <div class="${MODULE_NAME}_field_content hidden" id="${MODULE_NAME}_field_content_${field.key}">
@@ -184,20 +187,22 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
       ${greetings.map((greeting, i) => {
         const preview = greeting.substring(0, 150);
         const truncated = greeting.length > 150;
+        const greetingId = `${MODULE_NAME}_alt_greeting_${field.key}_${i}`;
 
         return `
           <div class="${MODULE_NAME}_alt_greeting_item">
             <input
               type="checkbox"
+              id="${greetingId}"
               class="${MODULE_NAME}_alt_greeting_checkbox"
               data-field="${field.key}"
               data-index="${i}"
               ${selectedIndices.includes(i) ? 'checked' : ''}
             >
-            <div class="${MODULE_NAME}_alt_greeting_content">
+            <label class="${MODULE_NAME}_alt_greeting_content" for="${greetingId}">
               <span class="${MODULE_NAME}_alt_greeting_label">Greeting ${i + 1}</span>
               <div class="${MODULE_NAME}_alt_greeting_preview">${escapeHtml(preview)}${truncated ? '...' : ''}</div>
-            </div>
+            </label>
           </div>
         `;
     }).join('')}

@@ -166,7 +166,7 @@ function buildSettingsContent(): string {
                 <span id="${MODULE_NAME}_user_system_prompt_chars">${(settings.userSystemPrompt || '').length} chars</span>
                 <button id="${MODULE_NAME}_clear_user_system_prompt" class="menu_button">
                   <i class="fa-solid fa-eraser"></i>
-                  Clear
+                  <span>Clear</span>
                 </button>
               </div>
             </div>
@@ -189,7 +189,7 @@ function buildSettingsContent(): string {
                   <span id="${MODULE_NAME}_base_system_prompt_chars">${(settings.baseSystemPrompt || '').length} chars</span>
                   <button id="${MODULE_NAME}_reset_base_system_prompt" class="menu_button">
                     <i class="fa-solid fa-rotate-left"></i>
-                    Reset
+                    <span>Reset</span>
                   </button>
                 </div>
               </div>
@@ -219,7 +219,7 @@ function buildSettingsContent(): string {
                 <span id="${MODULE_NAME}_user_refinement_prompt_chars">${(settings.userRefinementPrompt || '').length} chars</span>
                 <button id="${MODULE_NAME}_clear_user_refinement_prompt" class="menu_button">
                   <i class="fa-solid fa-eraser"></i>
-                  Clear
+                  <span>Clear</span>
                 </button>
               </div>
             </div>
@@ -239,7 +239,7 @@ function buildSettingsContent(): string {
                   <span id="${MODULE_NAME}_base_refinement_prompt_chars">${(settings.baseRefinementPrompt || '').length} chars</span>
                   <button id="${MODULE_NAME}_reset_base_refinement_prompt" class="menu_button">
                     <i class="fa-solid fa-rotate-left"></i>
-                    Reset
+                    <span>Reset</span>
                   </button>
                 </div>
               </div>
@@ -276,11 +276,11 @@ function buildSettingsContent(): string {
             <div class="${MODULE_NAME}_settings_row_spread">
               <button id="${MODULE_NAME}_export_presets" class="menu_button">
                 <i class="fa-solid fa-file-export"></i>
-                Export Custom
+                <span>Export Custom</span>
               </button>
               <button id="${MODULE_NAME}_import_presets" class="menu_button">
                 <i class="fa-solid fa-file-import"></i>
-                Import
+                <span>Import</span>
               </button>
             </div>
           </div>
@@ -325,15 +325,15 @@ function buildSettingsContent(): string {
             <div class="${MODULE_NAME}_debug_actions">
               <button id="${MODULE_NAME}_view_logs" class="menu_button">
                 <i class="fa-solid fa-list"></i>
-                View Logs
+                <span>View Logs</span>
               </button>
               <button id="${MODULE_NAME}_clear_logs" class="menu_button">
                 <i class="fa-solid fa-trash"></i>
-                Clear
+                <span>Clear</span>
               </button>
               <button id="${MODULE_NAME}_copy_debug_info" class="menu_button">
                 <i class="fa-solid fa-copy"></i>
-                Copy Info
+                <span>Copy Info</span>
               </button>
             </div>
 
@@ -369,7 +369,7 @@ function renderPresetList(type: 'prompt' | 'schema'): string {
         ${escapeHtml(preset.name)}
       </span>
       ${!preset.isBuiltin ? `
-        <button class="${MODULE_NAME}_preset_delete" data-type="${type}" data-id="${preset.id}" title="Delete">
+        <button class="${MODULE_NAME}_preset_delete menu_button" data-type="${type}" data-id="${preset.id}" title="Delete">
           <i class="fa-solid fa-trash"></i>
         </button>
       ` : ''}

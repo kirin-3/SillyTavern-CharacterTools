@@ -109,7 +109,7 @@ export function renderStageConfig(
             >
               <i class="fa-solid fa-floppy-disk"></i>
             </button>
-            <select id="${MODULE_NAME}_prompt_preset_select" class="${MODULE_NAME}_preset_select">
+            <select id="${MODULE_NAME}_prompt_preset_select" class="${MODULE_NAME}_preset_select text_pole">
               <option value="">Custom</option>
               ${renderPresetOptions(promptPresets, config.promptPresetId)}
             </select>
@@ -150,7 +150,7 @@ export function renderStageConfig(
             >
               <i class="fa-solid fa-floppy-disk"></i>
             </button>
-            <select id="${MODULE_NAME}_schema_preset_select" class="${MODULE_NAME}_preset_select">
+            <select id="${MODULE_NAME}_schema_preset_select" class="${MODULE_NAME}_preset_select text_pole">
               <option value="">Custom</option>
               ${renderPresetOptions(schemaPresets, config.schemaPresetId)}
             </select>
