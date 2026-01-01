@@ -137,6 +137,11 @@ function buildSettingsContent(): string {
             </div>
 
             <div id="${MODULE_NAME}_custom_gen_config" class="${settings.useCurrentSettings ? 'hidden' : ''}">
+              <p class="${MODULE_NAME}_settings_hint">
+                <i class="fa-solid fa-circle-info"></i>
+                Models load from SillyTavern's dropdowns. If a source shows limited models,
+                connect to it in ST's <strong>Connection Manager</strong> first, then return here.
+              </p>
               <div class="${MODULE_NAME}_settings_grid">
                 <div class="${MODULE_NAME}_settings_field">
                   <label>Source</label>
