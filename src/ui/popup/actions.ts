@@ -171,22 +171,13 @@ export async function selectCharacter(char: Character, index: number): Promise<v
 
             updateState(() => ({
                 sessions: data.sessions,
-                activeSessionId: data.activeSessionId,
+                activeSessionId: null,  // CHANGED: Don't set active session on load
                 sessionsLoaded: true,
-                historyLoaded: true,  // ADD: Session load complete, history is now accurate
+                historyLoaded: true,
             }));
 
-            if (data.activeSessionId && data.sessions.length > 0) {
-                const activeSession = data.sessions.find(s => s.id === data.activeSessionId);
-                if (activeSession) {
-                    updatePipeline(() => restorePipelineFromSession(activeSession, fullChar, selectedIndex));
-                    debugLog('info', 'Restored active session', {
-                        sessionId: data.activeSessionId,
-                        label: activeSession.label,
-                    });
-                    toastr.info(`Restored: ${activeSession.label}`);
-                }
-            }
+            // REMOVED: The entire if block that auto-restored sessions
+            // Sessions are available in the list—user can manually load if they want
 
             updateSessionManager();
             updateIterationHistory();
@@ -198,7 +189,7 @@ export async function selectCharacter(char: Character, index: number): Promise<v
             if (currentState) {
                 updateState(() => ({
                     sessionsLoaded: true,
-                    historyLoaded: true,  // ADD: Even on error, we're done loading
+                    historyLoaded: true,
                 }));
                 updateSessionManager();
             }
