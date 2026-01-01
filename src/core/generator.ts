@@ -39,6 +39,16 @@ function getModelKeyForSource(source: string): string {
  * Check if the API is ready for generation
  */
 export function isApiReady(): boolean {
+    const settings = getSettings();
+
+    // CHANGED: When using custom settings, we can't verify API status without
+    // actually making a request. Assume it's ready since the user explicitly
+    // configured it. If the API is unreachable, generation will fail with an
+    // appropriate error message.
+    if (!settings.useCurrentSettings) {
+        return true;
+    }
+
     const { onlineStatus } = SillyTavern.getContext();
 
     if (!onlineStatus) return false;
@@ -72,11 +82,13 @@ export function getApiInfo(): { source: string; model: string; isReady: boolean 
         };
     }
 
-    // Using custom generation config from extension settings
+    // CHANGED: Using custom generation config from extension settings
+    // We can't verify an external API's status without making a request,
+    // so assume it's ready since the user explicitly configured it.
     return {
         source: settings.generationConfig.source,
         model: settings.generationConfig.model,
-        isReady: isApiReady(),
+        isReady: true,
     };
 }
 
