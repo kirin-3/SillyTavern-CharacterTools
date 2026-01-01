@@ -51,6 +51,7 @@ export function updateAllComponents(): void {
 
     isUpdating = true;
     try {
+        updateApiStatus();
         updateCharacterSelect();
         updateSessionManager();
         updatePipelineNav();
