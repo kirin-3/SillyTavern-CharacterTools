@@ -90,7 +90,7 @@ Key principles:
 
 export const DEFAULT_USER_REFINEMENT_PROMPT = '';
 
-export const DEFAULT_STAGE_SYSTEM_PROMPTS = {
+export const DEFAULT_STAGE_SYSTEM_PROMPTS: Record<StageName, string> = {
     score: '',
     rewrite: '',
     analyze: '',
@@ -489,7 +489,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
  * Template placeholders that can be used in prompts.
  * These are replaced at runtime with actual values.
  *
- * NOTE: We do NOT support Nate - the user's persona is irrelevant
+ * NOTE: We do NOT support {{user}} - the user's persona is irrelevant
  * to character card analysis. If someone uses it, it passes through unchanged.
  */
 export const TEMPLATE_PLACEHOLDERS = {
@@ -500,8 +500,8 @@ export const TEMPLATE_PLACEHOLDERS = {
     CURRENT_ANALYSIS: '{{current_analysis}}',
     ITERATION_NUMBER: '{{iteration_number}}',
     CHARACTER_NAME: '{{char_name}}',
-    // Ruby is also supported as an alias for CHARACTER_NAME
-    // Nate is NOT supported - left unchanged if used
+    // {{char}} is also supported as an alias for CHARACTER_NAME
+    // {{user}} is NOT supported - left unchanged if used
 } as const;
 
 // ============================================================================

@@ -10,6 +10,7 @@ import {
     BUILTIN_SCHEMA_PRESETS,
     SETTINGS_VERSION,
     CURRENT_PRESET_VERSION,
+    DEFAULT_STAGE_SYSTEM_PROMPTS,
 } from '../constants';
 import type {
     Settings,
@@ -52,7 +53,7 @@ const migrations: Record<number, MigrationFn> = {
     },
 
     // v2 -> v3: Add refinement prompt (old format)
-    3: (settings) => {
+    3: (_settings) => {
         // This migration added the old single refinementPrompt
         // Will be migrated again in v4
     },
@@ -132,7 +133,6 @@ function runMigrations(settings: Partial<Settings>, oldVersion: number): boolean
  */
 export function getSettings(): Settings {
     const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
-    const { lodash } = SillyTavern.libs;
 
     // First time - initialize with defaults
     if (!extensionSettings[MODULE_NAME]) {
@@ -150,13 +150,11 @@ export function getSettings(): Settings {
         runMigrations(existing, oldVersion);
         existing.settingsVersion = SETTINGS_VERSION;
 
-        // Merge with defaults to ensure all fields exist
-        const merged = lodash.merge(
-            structuredClone(DEFAULT_SETTINGS),
-            existing,
-        ) as Settings;
+        // FIXED: Don't use lodash.merge - it merges arrays by index and corrupts presets!
+        // Instead, manually merge with proper array handling
+        const merged = mergeSettingsWithDefaults(existing);
 
-        // Ensure builtin presets exist
+        // Ensure builtin presets exist (adds missing, updates outdated)
         ensureBuiltinPresets(merged);
 
         // Write back merged settings and save
@@ -166,29 +164,140 @@ export function getSettings(): Settings {
         return merged;
     }
 
-    // No migration needed - check if builtins need updating (rare)
+    // No migration needed - just ensure we have valid settings structure
     const settings = existing as Settings;
 
-    // Only check builtins if presets arrays exist but might be missing new builtins
-    if (settings.promptPresets && settings.schemaPresets) {
-        const builtinsAdded = ensureBuiltinPresets(settings);
-        if (builtinsAdded) {
-            saveSettingsDebounced();
-        }
+    // Ensure preset arrays exist
+    if (!settings.promptPresets) {
+        settings.promptPresets = [];
+    }
+    if (!settings.schemaPresets) {
+        settings.schemaPresets = [];
+    }
+
+    // Check if builtins need updating (rare - only when we add new builtins)
+    const builtinsAdded = ensureBuiltinPresets(settings);
+    if (builtinsAdded) {
+        saveSettingsDebounced();
     }
 
     return settings;
 }
 
+/**
+ * Merge existing settings with defaults, properly handling arrays.
+ * Arrays are PRESERVED from existing, not merged by index.
+ * Nested objects are deep-merged.
+ */
+function mergeSettingsWithDefaults(existing: Partial<Settings>): Settings {
+    // Start with defaults
+    const merged: Settings = structuredClone(DEFAULT_SETTINGS);
 
+    // Shallow-merge scalar properties (existing takes priority)
+    if (existing.useCurrentSettings !== undefined) {
+        merged.useCurrentSettings = existing.useCurrentSettings;
+    }
+    if (existing.baseSystemPrompt !== undefined) {
+        merged.baseSystemPrompt = existing.baseSystemPrompt;
+    }
+    if (existing.userSystemPrompt !== undefined) {
+        merged.userSystemPrompt = existing.userSystemPrompt;
+    }
+    if (existing.baseRefinementPrompt !== undefined) {
+        merged.baseRefinementPrompt = existing.baseRefinementPrompt;
+    }
+    if (existing.userRefinementPrompt !== undefined) {
+        merged.userRefinementPrompt = existing.userRefinementPrompt;
+    }
+    if (existing.debugMode !== undefined) {
+        merged.debugMode = existing.debugMode;
+    }
+    if (existing.settingsVersion !== undefined) {
+        merged.settingsVersion = existing.settingsVersion;
+    }
+
+    // Deep-merge nested objects (NOT arrays)
+    if (existing.generationConfig) {
+        merged.generationConfig = {
+            ...DEFAULT_GENERATION_CONFIG,
+            ...existing.generationConfig,
+        };
+    }
+
+    if (existing.stageSystemPrompts) {
+        merged.stageSystemPrompts = {
+            ...DEFAULT_STAGE_SYSTEM_PROMPTS,
+            ...existing.stageSystemPrompts,
+        };
+    }
+
+    if (existing.stageDefaults) {
+        // Deep merge stageDefaults - these are objects, not arrays
+        merged.stageDefaults = {
+            score: existing.stageDefaults.score
+                ? { ...DEFAULT_STAGE_DEFAULTS.score, ...existing.stageDefaults.score }
+                : { ...DEFAULT_STAGE_DEFAULTS.score },
+            rewrite: existing.stageDefaults.rewrite
+                ? { ...DEFAULT_STAGE_DEFAULTS.rewrite, ...existing.stageDefaults.rewrite }
+                : { ...DEFAULT_STAGE_DEFAULTS.rewrite },
+            analyze: existing.stageDefaults.analyze
+                ? { ...DEFAULT_STAGE_DEFAULTS.analyze, ...existing.stageDefaults.analyze }
+                : { ...DEFAULT_STAGE_DEFAULTS.analyze },
+        };
+    }
+
+    // CRITICAL: Preset arrays are REPLACED, not merged by index
+    // We preserve the user's entire array, then ensureBuiltinPresets adds any missing builtins
+    if (existing.promptPresets && Array.isArray(existing.promptPresets)) {
+        merged.promptPresets = [...existing.promptPresets];
+    }
+
+    if (existing.schemaPresets && Array.isArray(existing.schemaPresets)) {
+        merged.schemaPresets = [...existing.schemaPresets];
+    }
+
+    return merged;
+}
 
 /**
  * Ensure all builtin presets exist and are up-to-date in settings.
  * Updates existing builtins if their version is older than current.
  * Never touches user-created presets (isBuiltin === false).
+ * Also removes any corrupted preset entries.
  */
 function ensureBuiltinPresets(settings: Settings): boolean {
     let modified = false;
+
+    // Clean up any corrupted presets first (missing id or name)
+    const originalPromptCount = settings.promptPresets.length;
+    settings.promptPresets = settings.promptPresets.filter(p => {
+        if (!p || typeof p !== 'object' || !p.id || !p.name) {
+            debugLog('info', 'Removing corrupted prompt preset', { preset: p });
+            return false;
+        }
+        return true;
+    });
+    if (settings.promptPresets.length !== originalPromptCount) {
+        modified = true;
+        debugLog('info', 'Removed corrupted prompt presets', {
+            removed: originalPromptCount - settings.promptPresets.length,
+        });
+    }
+
+    const originalSchemaCount = settings.schemaPresets.length;
+    settings.schemaPresets = settings.schemaPresets.filter(p => {
+        if (!p || typeof p !== 'object' || !p.id || !p.name || !p.schema) {
+            debugLog('info', 'Removing corrupted schema preset', { preset: p });
+            return false;
+        }
+        return true;
+    });
+    if (settings.schemaPresets.length !== originalSchemaCount) {
+        modified = true;
+        debugLog('info', 'Removed corrupted schema presets', {
+            removed: originalSchemaCount - settings.schemaPresets.length,
+        });
+    }
 
     // Update or add builtin prompt presets
     for (const builtin of BUILTIN_PROMPT_PRESETS) {

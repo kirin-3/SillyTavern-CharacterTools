@@ -140,10 +140,8 @@ export function updateSessionManagerState(
     const manager = container.querySelector(`#${MODULE_NAME}_session_manager`);
     if (!manager) return;
 
-    // Check if we're transitioning from loading state
     const wasLoading = manager.querySelector(`.${MODULE_NAME}_session_loading_icon`) !== null;
 
-    // If loading, show loading state
     if (isLoading) {
         manager.innerHTML = `
             <div class="${MODULE_NAME}_session_header">
@@ -157,12 +155,10 @@ export function updateSessionManagerState(
         return;
     }
 
-    // If transitioning from loading to loaded, full re-render
     if (wasLoading) {
         container.innerHTML = renderSessionManager(sessions, activeSessionId, hasUnsavedChanges, isExpanded, false);
         return;
     }
-
 
     // Update expanded/collapsed class
     manager.classList.toggle('expanded', isExpanded);
@@ -189,44 +185,32 @@ export function updateSessionManagerState(
         toggleBtn.className = `fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`;
     }
 
-    // Update list container visibility
+    // Update list container visibility and content
     const listContainer = manager.querySelector(`#${MODULE_NAME}_session_list_container`);
     if (listContainer) {
         listContainer.classList.toggle('hidden', !isExpanded);
-    }
 
-    // Update list contents
-    const list = manager.querySelector(`#${MODULE_NAME}_session_list`);
-    if (list) {
+        // FIXED: Always rebuild content to handle 0↔non-zero transitions
         const { moment } = SillyTavern.libs;
         if (sessions.length === 0) {
-            const containerEl = manager.querySelector(`#${MODULE_NAME}_session_list_container`);
-            if (containerEl) {
-                containerEl.innerHTML = `<div class="${MODULE_NAME}_session_empty">No saved sessions</div>`;
-            }
+            listContainer.innerHTML = `<div class="${MODULE_NAME}_session_empty">No saved sessions</div>`;
         } else {
-            list.innerHTML = sessions.map(s =>
-                renderSessionItem(s, s.id === activeSessionId, moment),
-            ).join('');
+            listContainer.innerHTML = `
+                <div class="${MODULE_NAME}_session_list" id="${MODULE_NAME}_session_list">
+                    ${sessions.map(s => renderSessionItem(s, s.id === activeSessionId, moment)).join('')}
+                </div>
+                <div class="${MODULE_NAME}_session_list_footer">
+                    <button id="${MODULE_NAME}_clear_all_sessions_btn" class="menu_button menu_button_icon">
+                        <i class="fa-solid fa-trash"></i>
+                        <span>Clear All</span>
+                    </button>
+                </div>
+            `;
         }
     }
-
-    // Ensure footer exists if we have sessions
-    const footer = manager.querySelector(`.${MODULE_NAME}_session_list_footer`);
-    const listContainerEl = manager.querySelector(`#${MODULE_NAME}_session_list_container`);
-    if (sessions.length > 0 && !footer && listContainerEl) {
-        listContainerEl.insertAdjacentHTML('beforeend', `
-            <div class="${MODULE_NAME}_session_list_footer">
-                <button id="${MODULE_NAME}_clear_all_sessions_btn" class="menu_button menu_button_icon">
-                    <i class="fa-solid fa-trash"></i>
-                    <span>Clear All</span>
-                </button>
-            </div>
-        `);
-    } else if (sessions.length === 0 && footer) {
-        footer.remove();
-    }
 }
+
+
 
 // ============================================================================
 // UTILITIES

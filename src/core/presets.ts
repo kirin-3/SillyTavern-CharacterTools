@@ -109,7 +109,7 @@ export function createStageConfigFromDefaults(stage: StageName): StageConfig {
  * Process a prompt template, replacing OUR placeholders with actual values.
  *
  * We do NOT use ST's substituteParams because:
- * 1. It replaces Ruby/Nate with the ACTIVE CHAT character/persona, not the one we're analyzing
+ * 1. It replaces {{char}}/{{user}} with the ACTIVE CHAT character/persona, not the one we're analyzing
  * 2. We want full control over what gets substituted
  * 3. The active chat context is irrelevant to character card analysis
  *
@@ -120,10 +120,10 @@ export function createStageConfigFromDefaults(stage: StageName): StageConfig {
  * - {{current_analysis}} - Analyze stage output
  * - {{iteration_number}} - Current iteration number
  * - {{char_name}} - Name of the character being analyzed
- * - Ruby - Alias for {{char_name}}
+ * - {{char}} - Alias for {{char_name}}
  *
  * NOT replaced (left as-is for user to see they don't work here):
- * - Nate - We don't know/care about the user's persona for card analysis
+ * - {{user}} - We don't know/care about the user's persona for card analysis
  */
 export function processPromptTemplate(prompt: string, context: TemplateContext): string {
     const { lodash } = SillyTavern.libs;
@@ -184,12 +184,12 @@ export function processPromptTemplate(prompt: string, context: TemplateContext):
         );
     }
 
-    // Ruby - replace with the analyzed character's name, NOT the active chat character
+    // {{char}} - replace with the analyzed character's name, NOT the active chat character
     if (context.charName !== undefined) {
         processed = processed.replace(/\{\{char\}\}/gi, context.charName);
     }
 
-    // NOTE: We intentionally do NOT replace Nate
+    // NOTE: We intentionally do NOT replace {{user}}
     // The user's persona is irrelevant to character card analysis
     // If someone uses it, they'll see it pass through unchanged, which is correct
 
@@ -248,7 +248,7 @@ export function promptHasPlaceholders(prompt: string): string[] {
         }
     }
 
-    // Also check for Ruby usage
+    // Also check for {{char}} usage
     if (/\{\{char\}\}/i.test(prompt)) {
         if (!found.includes('CHARACTER_NAME')) {
             found.push('CHARACTER_NAME');
@@ -438,9 +438,9 @@ export function validatePromptPreset(preset: Partial<PromptPreset>): PresetValid
             });
         }
 
-        // Warn if they're using Nate since we don't replace it
+        // Warn if they're using {{user}} since we don't replace it
         if (/\{\{user\}\}/i.test(preset.prompt)) {
-            warnings.push('Nate is not replaced in Character Tools - the user persona is not relevant to card analysis');
+            warnings.push('{{user}} is not replaced in Character Tools - the user persona is not relevant to card analysis');
         }
     }
 
