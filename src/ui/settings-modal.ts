@@ -62,6 +62,54 @@ function getModelKeyForSource(source: string): string {
     return `${source}_model`;
 }
 
+/**
+ * Copy text to clipboard with fallback for non-secure contexts.
+ * Returns true on success, false on failure.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+    // Modern API (secure contexts only)
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch {
+            // Fall through to fallback
+        }
+    }
+
+    // Fallback for HTTP/non-secure contexts
+    try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return success;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Read text from clipboard. Only works in secure contexts.
+ * Returns null if unavailable or denied.
+ */
+async function readFromClipboard(): Promise<string | null> {
+    if (!navigator.clipboard?.readText) {
+        return null;
+    }
+    try {
+        return await navigator.clipboard.readText();
+    } catch {
+        return null;
+    }
+}
+
+
 
 // ============================================================================
 // MAIN ENTRY
@@ -570,25 +618,45 @@ function initSettingsListeners(): void {
     const exportPresetsBtn = modal.querySelector(`#${MODULE_NAME}_export_presets`);
     const importPresetsBtn = modal.querySelector(`#${MODULE_NAME}_import_presets`);
 
-    exportPresetsBtn?.addEventListener('click', () => {
+    exportPresetsBtn?.addEventListener('click', async () => {
         const json = exportCustomPresets();
-        navigator.clipboard.writeText(json);
-        toastr.success('Custom presets copied to clipboard');
+        const success = await copyToClipboard(json);
+        if (success) {
+            toastr.success('Custom presets copied to clipboard');
+        } else {
+            toastr.error('Failed to copy. Try HTTPS or localhost.');
+        }
     });
 
     importPresetsBtn?.addEventListener('click', async () => {
-        try {
-            const json = await navigator.clipboard.readText();
-            const result = importPresets(json);
-
+        const json = await readFromClipboard();
+        if (json === null) {
+        // Clipboard read not available - show input dialog instead
+            const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+            const input = await Popup.show.input(
+                'Import Presets',
+                'Paste your preset JSON here:',
+                '',
+            );
+            if (input === null || input === POPUP_RESULT.CANCELLED || !input.trim()) {
+                return;
+            }
+            const result = importPresets(input);
             if (result.errors.length > 0) {
                 toastr.error(result.errors.join('\n'));
             } else {
                 toastr.success(`Imported ${result.prompts} prompts, ${result.schemas} schemas`);
                 refreshPresetLists();
             }
-        } catch {
-            toastr.error('Failed to read clipboard');
+            return;
+        }
+
+        const result = importPresets(json);
+        if (result.errors.length > 0) {
+            toastr.error(result.errors.join('\n'));
+        } else {
+            toastr.success(`Imported ${result.prompts} prompts, ${result.schemas} schemas`);
+            refreshPresetLists();
         }
     });
 
@@ -618,9 +686,13 @@ function initSettingsListeners(): void {
         toastr.info('Debug logs cleared');
     });
 
-    copyDebugBtn?.addEventListener('click', () => {
-        navigator.clipboard.writeText(exportDebugInfo());
-        toastr.success('Debug info copied to clipboard');
+    copyDebugBtn?.addEventListener('click', async () => {
+        const success = await copyToClipboard(exportDebugInfo());
+        if (success) {
+            toastr.success('Debug info copied to clipboard');
+        } else {
+            toastr.error('Failed to copy. Try HTTPS or localhost.');
+        }
     });
 }
 

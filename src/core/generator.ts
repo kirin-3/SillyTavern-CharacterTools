@@ -35,30 +35,53 @@ function getModelKeyForSource(source: string): string {
 // API STATUS
 // ============================================================================
 
+
 /**
  * Check if the API is ready for generation
  */
 export function isApiReady(): boolean {
     const settings = getSettings();
 
-    // CHANGED: When using custom settings, we can't verify API status without
+    // When using custom settings, we can't verify API status without
     // actually making a request. Assume it's ready since the user explicitly
-    // configured it. If the API is unreachable, generation will fail with an
-    // appropriate error message.
+    // configured it.
     if (!settings.useCurrentSettings) {
         return true;
     }
 
-    const { onlineStatus } = SillyTavern.getContext();
+    const { onlineStatus, chatCompletionSettings } = SillyTavern.getContext();
 
-    if (!onlineStatus) return false;
+    // If bypass is enabled in ST settings, trust it
+    if (chatCompletionSettings?.bypass_status_check) {
+        return true;
+    }
+
+    // No status at all = not ready
+    if (!onlineStatus) {
+        return false;
+    }
 
     const status = String(onlineStatus).toLowerCase();
-    return status === 'valid'
-        || status === 'connected'
-        || status === 'ok'
-        || status === 'ready';
+
+    // Standard success states
+    if (['valid', 'connected', 'ok', 'ready'].includes(status)) {
+        return true;
+    }
+
+    // Partial success states (key saved but not tested)
+    if (status.includes('key') || status.includes('saved')) {
+        return true;
+    }
+
+    // Any non-empty status that isn't an obvious error
+    const errorPatterns = ['error', 'fail', 'invalid', 'unauthorized', 'missing', 'no connection'];
+    if (!errorPatterns.some(p => status.includes(p))) {
+        return true;
+    }
+
+    return false;
 }
+
 
 /**
  * Get current API info for display
