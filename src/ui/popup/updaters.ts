@@ -16,6 +16,31 @@ import { renderSessionManager, updateSessionManagerState } from './components/se
 
 import type { StageConfig, SchemaValidationResult } from '../../types';
 
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function formatApiDisplay(source: string, model: string): string {
+    // Strip common provider prefixes to save space
+    let displayModel = model
+        .replace(/^anthropic\//, '')
+        .replace(/^openai\//, '')
+        .replace(/^google\//, '')
+        .replace(/^meta-llama\//, 'llama-')
+        .replace(/^mistralai\//, 'mistral-');
+
+    // Truncate if still too long
+    if (displayModel.length > 24) {
+        displayModel = displayModel.substring(0, 21) + '...';
+    }
+
+    return `${source} • ${displayModel}`;
+}
+
+// ============================================================================
+// UPDATE ORCHESTRATION
+// ============================================================================
+
 let isUpdating = false;
 
 export function updateAllComponents(): void {
@@ -39,6 +64,10 @@ export function updateAllComponents(): void {
     }
 }
 
+// ============================================================================
+// INDIVIDUAL UPDATERS
+// ============================================================================
+
 export function updateApiStatus(): void {
     const el = getElement();
     if (!el) return;
@@ -48,9 +77,11 @@ export function updateApiStatus(): void {
 
     if (statusEl) {
         statusEl.className = `${MODULE_NAME}_api_status ${apiInfo.isReady ? 'connected' : 'disconnected'}`;
+        statusEl.setAttribute('title', `${apiInfo.source} • ${apiInfo.model}`);
+
         const textSpan = statusEl.querySelector('span');
         if (textSpan) {
-            textSpan.textContent = apiInfo.source;
+            textSpan.textContent = formatApiDisplay(apiInfo.source, apiInfo.model);
         }
     }
 
@@ -135,7 +166,7 @@ export function updateStageConfigUI(): void {
         state.isGenerating || state.isRefining,
         !!state.pipeline.character,
         schemaValidation,
-        schemaContent,  // Pass resolved content
+        schemaContent,
     );
 }
 
@@ -147,7 +178,6 @@ function resolveSchemaContent(config: StageConfig): string {
     }
     return config.customSchema;
 }
-
 
 export function updateResultsPanel(): void {
     const el = getElement();

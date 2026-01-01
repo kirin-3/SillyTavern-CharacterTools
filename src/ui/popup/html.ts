@@ -4,8 +4,34 @@
 import { MODULE_NAME, STAGE_ICONS } from '../../constants';
 import { getApiInfo } from '../../core/generator';
 
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function formatApiDisplay(source: string, model: string): string {
+    // Strip common provider prefixes to save space
+    let displayModel = model
+        .replace(/^anthropic\//, '')
+        .replace(/^openai\//, '')
+        .replace(/^google\//, '')
+        .replace(/^meta-llama\//, 'llama-')
+        .replace(/^mistralai\//, 'mistral-');
+
+    // Truncate if still too long
+    if (displayModel.length > 24) {
+        displayModel = displayModel.substring(0, 21) + '...';
+    }
+
+    return `${source} • ${displayModel}`;
+}
+
+// ============================================================================
+// MAIN CONTENT
+// ============================================================================
+
 export function buildPopupContent(): string {
     const apiInfo = getApiInfo();
+    const displayText = formatApiDisplay(apiInfo.source, apiInfo.model);
 
     return `
     <div class="${MODULE_NAME}_popup" id="${MODULE_NAME}_popup">
@@ -16,9 +42,9 @@ export function buildPopupContent(): string {
           <span>Character Tools</span>
         </div>
         <div class="${MODULE_NAME}_popup_header_right">
-          <div class="${MODULE_NAME}_api_status ${apiInfo.isReady ? 'connected' : 'disconnected'}">
+          <div class="${MODULE_NAME}_api_status ${apiInfo.isReady ? 'connected' : 'disconnected'}" title="${apiInfo.source} • ${apiInfo.model}">
             <i class="fa-solid fa-circle"></i>
-            <span>${apiInfo.source}</span>
+            <span>${displayText}</span>
           </div>
           <button id="${MODULE_NAME}_settings_btn" class="${MODULE_NAME}_icon_btn" title="Settings">
             <i class="fa-solid fa-gear"></i>
