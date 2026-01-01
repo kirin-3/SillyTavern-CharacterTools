@@ -161,8 +161,13 @@ export function collectDebugInfo(): Record<string, unknown> {
             mainApi: context.mainApi,
             onlineStatus: context.onlineStatus,
             chatCompletionSource: context.chatCompletionSettings?.chat_completion_source,
-            currentModel: context.chatCompletionSettings?.openrouter_model ||
-                    context.chatCompletionSettings?.model_openai_select,
+            currentModel: (() => {
+                const ccs = context.chatCompletionSettings || {};
+                const source = ccs.chat_completion_source || context.mainApi || 'unknown';
+                // Handle special case: makersuite uses google_model
+                const modelKey = source === 'makersuite' ? 'google_model' : `${source}_model`;
+                return ccs[modelKey] || 'unknown';
+            })(),
             maxContext: context.maxContext,
             characterCount: context.characters?.length ?? 0,
             hasActiveChat: !!context.chat?.length,

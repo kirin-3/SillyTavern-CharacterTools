@@ -32,6 +32,37 @@ import {
 import { debugLog, getDebugLogs, clearDebugLogs, formatLogEntry, formatLogData, exportDebugInfo } from '../debug';
 import type { GenerationConfig } from '../types';
 
+
+// ============================================================================
+// HELPER: Source to DOM Select ID Mapping
+// ============================================================================
+
+/**
+ * Gets the DOM select element ID for a source's model dropdown.
+ * Most follow `model_${source}_select`, but some are special.
+ */
+function getModelSelectIdForSource(source: string): string {
+    // Special cases where the select ID doesn't follow standard pattern
+    if (source === 'makersuite') {
+        return 'model_google_select';  // Uses Google's model select
+    }
+    if (source === 'azure_openai') {
+        return 'azure_openai_model';   // Non-standard ID format
+    }
+    return `model_${source}_select`;
+}
+
+/**
+ * Gets the model settings key for a source (mirrors generator.ts logic)
+ */
+function getModelKeyForSource(source: string): string {
+    if (source === 'makersuite') {
+        return 'google_model';
+    }
+    return `${source}_model`;
+}
+
+
 // ============================================================================
 // MAIN ENTRY
 // ============================================================================
@@ -662,6 +693,7 @@ function populateSourceSelect(currentSource: string): void {
 
     sourceSelect.innerHTML = '';
 
+    // Read available sources from ST's source dropdown
     const stSourceSelect = document.getElementById('chat_completion_source') as HTMLSelectElement;
 
     if (stSourceSelect) {
@@ -675,8 +707,10 @@ function populateSourceSelect(currentSource: string): void {
         });
     }
 
+    // Fallback if ST dropdown not found (shouldn't happen)
     if (sourceSelect.options.length === 0) {
-        ['openrouter', 'openai', 'claude', 'makersuite', 'mistralai', 'groq'].forEach(src => {
+        const fallbackSources = ['openai', 'openrouter', 'claude', 'google', 'groq'];
+        fallbackSources.forEach(src => {
             const option = document.createElement('option');
             option.value = src;
             option.textContent = src;
@@ -694,22 +728,9 @@ function populateModelSelect(source: string, currentModel?: string): void {
 
     modelSelect.innerHTML = '';
 
-    const selectIdMap: Record<string, string> = {
-        openrouter: 'model_openrouter_select',
-        openai: 'model_openai_select',
-        claude: 'model_claude_select',
-        makersuite: 'model_google_select',
-        google: 'model_google_select',
-        mistralai: 'model_mistralai_select',
-        cohere: 'model_cohere_select',
-        perplexity: 'model_perplexity_select',
-        groq: 'model_groq_select',
-        ai21: 'model_ai21_select',
-        deepseek: 'model_deepseek_select',
-        custom: 'model_custom_select',
-    };
-
-    const stSelect = selectIdMap[source] ? document.getElementById(selectIdMap[source]) as HTMLSelectElement : null;
+    // Get the correct ST select element for this source
+    const stSelectId = getModelSelectIdForSource(source);
+    const stSelect = document.getElementById(stSelectId) as HTMLSelectElement;
 
     if (stSelect?.options.length) {
         Array.from(stSelect.options).forEach((opt: HTMLOptionElement) => {
@@ -720,13 +741,21 @@ function populateModelSelect(source: string, currentModel?: string): void {
                 modelSelect.appendChild(option);
             }
         });
-    } else {
+    }
+
+    // If no options from DOM, try to get from settings as fallback
+    if (modelSelect.options.length === 0) {
+        const ccs = SillyTavern.getContext().chatCompletionSettings || {};
+        const modelKey = getModelKeyForSource(source);
+        const settingsModel = ccs[modelKey] || currentModel || '';
+
         const option = document.createElement('option');
-        option.value = currentModel || '';
-        option.textContent = currentModel || `No models for ${source}`;
+        option.value = settingsModel;
+        option.textContent = settingsModel || `No models available for ${source}`;
         modelSelect.appendChild(option);
     }
 
+    // Set current value
     if (currentModel && Array.from(modelSelect.options).some(o => o.value === currentModel)) {
         modelSelect.value = currentModel;
     } else if (modelSelect.options.length) {

@@ -13,6 +13,24 @@ import type {
 } from '../types';
 import { buildStagePrompt, buildRefinementPrompt, getStageSchema } from './pipeline';
 
+
+// ============================================================================
+// HELPER: Source to Model Key Mapping
+// ============================================================================
+
+/**
+ * Maps chat completion source to its corresponding model settings key.
+ * Most follow the pattern `${source}_model`, but some are special.
+ */
+function getModelKeyForSource(source: string): string {
+    // Special case: Google AI Studio uses 'google_model', not 'makersuite_model'
+    if (source === 'makersuite') {
+        return 'google_model';
+    }
+    return `${source}_model`;
+}
+
+
 // ============================================================================
 // API STATUS
 // ============================================================================
@@ -43,36 +61,9 @@ export function getApiInfo(): { source: string; model: string; isReady: boolean 
         const ccs = context.chatCompletionSettings || {};
         const source = ccs.chat_completion_source || context.mainApi || 'unknown';
 
-        // Dynamic lookup based on source, then fallbacks
-        // Most APIs use {source}_model pattern
-        const sourceModelKey = `${source}_model`;
-        const model =
-            ccs[sourceModelKey] ||           // Dynamic: openrouter_model, claude_model, etc.
-            ccs.openrouter_model ||
-            ccs.openai_model ||
-            ccs.claude_model ||
-            ccs.google_model ||
-            ccs.vertexai_model ||
-            ccs.mistralai_model ||
-            ccs.cohere_model ||
-            ccs.perplexity_model ||
-            ccs.groq_model ||
-            ccs.ai21_model ||
-            ccs.deepseek_model ||
-            ccs.xai_model ||
-            ccs.chutes_model ||
-            ccs.siliconflow_model ||
-            ccs.electronhub_model ||
-            ccs.nanogpt_model ||
-            ccs.aimlapi_model ||
-            ccs.pollinations_model ||
-            ccs.cometapi_model ||
-            ccs.moonshot_model ||
-            ccs.fireworks_model ||
-            ccs.zai_model ||
-            ccs.custom_model ||
-            ccs.azure_openai_model ||
-            'unknown';
+        // Get the correct model key for this source (handles special cases)
+        const modelKey = getModelKeyForSource(source);
+        const model = ccs[modelKey] || 'unknown';
 
         return {
             source,
@@ -81,13 +72,13 @@ export function getApiInfo(): { source: string; model: string; isReady: boolean 
         };
     }
 
+    // Using custom generation config from extension settings
     return {
         source: settings.generationConfig.source,
         model: settings.generationConfig.model,
         isReady: isApiReady(),
     };
 }
-
 
 // ============================================================================
 // MAIN GENERATION FUNCTION
