@@ -33,7 +33,7 @@ import {
     getAvailableProfiles,
     getApiStatus,
 } from '../core/generator';
-import { countTokens } from '../core/tokens';
+import { countTokens, clearTokenCache } from '../core/tokens';
 import {
     debugLog,
     getDebugLogs,
@@ -725,6 +725,9 @@ function initSettingsListeners(): void {
             // Update settings
             updateGenerationSettings({ mode });
 
+            // Clear token cache - different mode may use different tokenizer
+            clearTokenCache();
+
             refreshApiStatusBanner();
         });
     });
@@ -735,6 +738,9 @@ function initSettingsListeners(): void {
     profileSelect?.addEventListener('change', () => {
         const profileId = profileSelect.value || null;
         updateGenerationSettings({ profileId });
+
+        // Clear token cache - different profile may use different tokenizer
+        clearTokenCache();
 
         // Update the profile info display
         const profiles = getAvailableProfiles();
