@@ -138,14 +138,16 @@ export interface StructuredOutputSchema {
 export interface JsonSchemaValue {
     $schema?: string;
     type: string;
-    properties?: Record<string, unknown>;
+    properties?: Record<string, JsonSchemaValue>;  // CHANGED: was Record<string, unknown>
     required?: string[];
     additionalProperties?: boolean;
-    items?: unknown;
+    items?: JsonSchemaValue | JsonSchemaValue[];   // CHANGED: was unknown
+    prefixItems?: JsonSchemaValue[];               // NEW: JSON Schema 2020-12
     $defs?: Record<string, JsonSchemaValue>;
     definitions?: Record<string, JsonSchemaValue>;
-    anyOf?: unknown[];
-    allOf?: unknown[];
+    anyOf?: JsonSchemaValue[];                     // CHANGED: was unknown[]
+    allOf?: JsonSchemaValue[];                     // CHANGED: was unknown[]
+    oneOf?: JsonSchemaValue[];                     // NEW: (unsupported but should be in type)
     enum?: unknown[];
     const?: unknown;
     format?: string;
@@ -154,7 +156,21 @@ export interface JsonSchemaValue {
     title?: string;
     default?: unknown;
     $ref?: string;
+    // Array constraints
     minItems?: number;
+    maxItems?: number;                             // NEW
+    uniqueItems?: boolean;                         // NEW
+    contains?: JsonSchemaValue;                    // NEW
+    // Numeric constraints (ignored but should be typed)
+    minimum?: number;                              // NEW
+    maximum?: number;                              // NEW
+    exclusiveMinimum?: number;                     // NEW
+    exclusiveMaximum?: number;                     // NEW
+    multipleOf?: number;                           // NEW
+    // String constraints (ignored but should be typed)
+    minLength?: number;                            // NEW
+    maxLength?: number;                            // NEW
+    // Index signature for other properties
     [key: string]: unknown;
 }
 

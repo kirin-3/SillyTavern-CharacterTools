@@ -43,3 +43,9 @@ coverage/
 project_snapshot.txt
 snapshot.sh
 dist/*.map
+api_settings_files.txt
+css_reference.md
+generate_reference.md
+grab_api_files.sh
+ui_snapshot.sh
+
