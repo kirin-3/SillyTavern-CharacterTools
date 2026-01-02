@@ -33,6 +33,7 @@ import {
     getAvailableProfiles,
     getApiStatus,
 } from '../core/generator';
+import { countTokens } from '../core/tokens';
 import {
     debugLog,
     getDebugLogs,
@@ -80,22 +81,6 @@ async function readFromClipboard(): Promise<string | null> {
     }
     try {
         return await navigator.clipboard.readText();
-    } catch {
-        return null;
-    }
-}
-
-// ============================================================================
-// TOKEN COUNTING HELPER
-// ============================================================================
-
-async function getTokenCountForText(text: string): Promise<number | null> {
-    const ctx = SillyTavern.getContext();
-    if (typeof ctx.getTokenCountAsync !== 'function') {
-        return null;
-    }
-    try {
-        return await ctx.getTokenCountAsync(text);
     } catch {
         return null;
     }
@@ -570,7 +555,7 @@ function renderPresetList(type: 'prompt' | 'schema'): string {
 // TOKEN COUNT UPDATES
 // ============================================================================
 
-async function updatePromptTokenCounts(): Promise<void> {
+function updatePromptTokenCounts(): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
     if (!modal) return;
 
@@ -592,16 +577,18 @@ async function updatePromptTokenCounts(): Promise<void> {
             continue;
         }
 
-        const tokens = await getTokenCountForText(text);
-        if (tokens !== null) {
-            el.textContent = `${tokens.toLocaleString()} tokens`;
-        } else {
-            el.textContent = `${text.length} chars`;
-        }
+        // Use debounced countTokens with callback
+        countTokens(text, (tokens) => {
+            if (tokens !== null) {
+                el.textContent = `${tokens.toLocaleString()} tokens`;
+            } else {
+                el.textContent = '-- tokens';
+            }
+        }, true); // immediate = true for initial load
     }
 }
 
-async function updateSingleTokenCount(elementId: string, text: string): Promise<void> {
+function updateSingleTokenCount(elementId: string, text: string): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
     if (!modal) return;
 
@@ -613,23 +600,19 @@ async function updateSingleTokenCount(elementId: string, text: string): Promise<
         return;
     }
 
-    const tokens = await getTokenCountForText(text);
-    if (tokens !== null) {
-        el.textContent = `${tokens.toLocaleString()} tokens`;
-    } else {
-        el.textContent = `${text.length} chars`;
-    }
+    // Use debounced countTokens
+    countTokens(text, (tokens) => {
+        if (tokens !== null) {
+            el.textContent = `${tokens.toLocaleString()} tokens`;
+        } else {
+            el.textContent = '-- tokens';
+        }
+    });
 }
 
 // ============================================================================
 // EVENT LISTENERS
 // ============================================================================
-
-// Debounce timers
-let userSystemPromptDebounce: ReturnType<typeof setTimeout> | null = null;
-let baseSystemPromptDebounce: ReturnType<typeof setTimeout> | null = null;
-let userRefinementPromptDebounce: ReturnType<typeof setTimeout> | null = null;
-let baseRefinementPromptDebounce: ReturnType<typeof setTimeout> | null = null;
 
 function initSettingsListeners(): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
@@ -722,12 +705,7 @@ function initSettingsListeners(): void {
 
     userSystemPromptTextarea?.addEventListener('input', () => {
         updateUserSystemPrompt(userSystemPromptTextarea.value);
-
-        // Debounced token count update
-        if (userSystemPromptDebounce) clearTimeout(userSystemPromptDebounce);
-        userSystemPromptDebounce = setTimeout(() => {
-            updateSingleTokenCount(`${MODULE_NAME}_user_system_prompt_tokens`, userSystemPromptTextarea.value);
-        }, 300);
+        updateSingleTokenCount(`${MODULE_NAME}_user_system_prompt_tokens`, userSystemPromptTextarea.value);
     });
 
     clearUserSystemPromptBtn?.addEventListener('click', () => {
@@ -743,11 +721,7 @@ function initSettingsListeners(): void {
 
     baseSystemPromptTextarea?.addEventListener('input', () => {
         updateBaseSystemPrompt(baseSystemPromptTextarea.value);
-
-        if (baseSystemPromptDebounce) clearTimeout(baseSystemPromptDebounce);
-        baseSystemPromptDebounce = setTimeout(() => {
-            updateSingleTokenCount(`${MODULE_NAME}_base_system_prompt_tokens`, baseSystemPromptTextarea.value);
-        }, 300);
+        updateSingleTokenCount(`${MODULE_NAME}_base_system_prompt_tokens`, baseSystemPromptTextarea.value);
     });
 
     resetBaseSystemPromptBtn?.addEventListener('click', () => {
@@ -771,11 +745,7 @@ function initSettingsListeners(): void {
 
     userRefinementPromptTextarea?.addEventListener('input', () => {
         updateUserRefinementPrompt(userRefinementPromptTextarea.value);
-
-        if (userRefinementPromptDebounce) clearTimeout(userRefinementPromptDebounce);
-        userRefinementPromptDebounce = setTimeout(() => {
-            updateSingleTokenCount(`${MODULE_NAME}_user_refinement_prompt_tokens`, userRefinementPromptTextarea.value);
-        }, 300);
+        updateSingleTokenCount(`${MODULE_NAME}_user_refinement_prompt_tokens`, userRefinementPromptTextarea.value);
     });
 
     clearUserRefinementPromptBtn?.addEventListener('click', () => {
@@ -791,11 +761,7 @@ function initSettingsListeners(): void {
 
     baseRefinementPromptTextarea?.addEventListener('input', () => {
         updateBaseRefinementPrompt(baseRefinementPromptTextarea.value);
-
-        if (baseRefinementPromptDebounce) clearTimeout(baseRefinementPromptDebounce);
-        baseRefinementPromptDebounce = setTimeout(() => {
-            updateSingleTokenCount(`${MODULE_NAME}_base_refinement_prompt_tokens`, baseRefinementPromptTextarea.value);
-        }, 300);
+        updateSingleTokenCount(`${MODULE_NAME}_base_refinement_prompt_tokens`, baseRefinementPromptTextarea.value);
     });
 
     resetBaseRefinementPromptBtn?.addEventListener('click', () => {

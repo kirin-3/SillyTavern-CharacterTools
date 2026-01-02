@@ -4,6 +4,7 @@
 import { debugLog } from '../../debug';
 import { isApiReady } from '../../core/generator';
 import { setCharacter } from '../../core/pipeline';
+import { clearTokenCache } from '../../core/tokens';
 import {
     getState,
     setState,
@@ -33,6 +34,8 @@ export function subscribeEvents(): void {
 
         onMainApiChange: () => {
             debugLog('info', 'Main API changed', null);
+            // Clear token cache when API changes (tokenizer may differ)
+            clearTokenCache();
             updateApiStatus();
             updateTokenEstimate();
         },
@@ -58,12 +61,16 @@ export function subscribeEvents(): void {
 
         onSourceChanged: () => {
             debugLog('info', 'Chat completion source changed', null);
+            // Clear token cache when source changes
+            clearTokenCache();
             updateApiStatus();
             updateTokenEstimate();
         },
 
         onModelChanged: () => {
             debugLog('info', 'Chat completion model changed', null);
+            // Clear token cache when model changes (tokenizer may differ)
+            clearTokenCache();
             updateApiStatus();
             updateTokenEstimate();
         },

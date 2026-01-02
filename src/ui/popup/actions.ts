@@ -10,8 +10,6 @@ import {
     updatePipeline,
     markUnsavedChanges,
     clearUnsavedChanges,
-    getTokenFromCache,
-    setTokenInCache,
     setSchemaValidationInCache,
 } from './state';
 import {
@@ -32,6 +30,7 @@ import { renderIterationViewContent } from './components/iteration-history';
 
 // Core imports
 import { getPopulatedFields } from '../../core/character';
+import { getTokenCountsKeyed } from '../../core/tokens';
 import {
     setCharacter,
     updateFieldSelection,
@@ -61,7 +60,7 @@ import {
     createPipelineState,
     initializeFieldSelection,
 } from '../../core/pipeline';
-import { isApiReady, runStageGeneration, runRefinementGeneration } from '../../core/generator';
+import { isApiReady, runStageGeneration, runRefinementGeneration, getTokenCount } from '../../core/generator';
 import {
     loadCharacterSessions,
     saveSession,
@@ -455,7 +454,6 @@ export async function resetCurrentPipeline(): Promise<void> {
             'This will clear all results and start fresh. Your session will be saved first. Continue?',
         );
 
-        // Popup.show.confirm returns boolean: true = confirmed, false = cancelled
         if (!confirmed) return;
 
         if (state.pipeline.character && state.hasUnsavedChanges) {
@@ -859,7 +857,6 @@ export async function revertToIteration(iterationIndex: number): Promise<void> {
         `Revert to iteration ${iterationIndex + 1}? Current results will be replaced.`,
     );
 
-    // Popup.show.confirm returns boolean
     if (!confirmed) return;
 
     updatePipeline(p => pipelineRevertToIteration(p, iterationIndex));
@@ -957,7 +954,6 @@ export async function createNewSession(): Promise<void> {
             'You have unsaved changes. Save before starting a new session?',
         );
 
-        // Popup.show.confirm returns boolean
         if (save) {
             await saveCurrentSession();
         }
@@ -969,7 +965,6 @@ export async function createNewSession(): Promise<void> {
         `Session ${state.sessions.length + 1}`,
     );
 
-    // Popup.show.input returns string | null (null = cancelled)
     if (!label) return;
 
     const character = state.pipeline.character;
@@ -1018,11 +1013,9 @@ export async function loadSession(sessionId: string): Promise<void> {
             'You have unsaved changes. Save before loading another session?',
         );
 
-        // Popup.show.confirm returns boolean
         if (save) {
             await saveCurrentSession();
         }
-        // If false (cancelled/no), we still proceed to load
     }
 
     const session = state.sessions.find(s => s.id === sessionId);
@@ -1061,7 +1054,6 @@ export async function renameSession(sessionId: string): Promise<void> {
         session.label,
     );
 
-    // Popup.show.input returns string | null
     if (!newLabel || !newLabel.trim()) return;
 
     const success = await persistenceRenameSession(state.pipeline.character, sessionId, newLabel.trim());
@@ -1090,7 +1082,6 @@ export async function deleteSessionById(sessionId: string): Promise<void> {
         `Delete "${session.label}"? This cannot be undone.`,
     );
 
-    // Popup.show.confirm returns boolean
     if (!confirmed) return;
 
     const wasActive = sessionId === state.activeSessionId;
@@ -1145,7 +1136,6 @@ export async function clearAllSessions(): Promise<void> {
         `Delete ALL sessions for ${character.name}? This cannot be undone.`,
     );
 
-    // Popup.show.confirm returns boolean
     if (!confirmed) return;
 
     const count = await deleteAllCharacterSessions(character);
@@ -1317,7 +1307,6 @@ export async function generateSchema(): Promise<void> {
         '',
     );
 
-    // Popup.show.input returns string | null
     if (!description || !description.trim()) {
         return;
     }
@@ -1491,9 +1480,8 @@ export async function saveCurrentPromptAsPreset(): Promise<void> {
         `Custom ${STAGE_LABELS[state.activeStageView]} Prompt`,
     );
 
-    // Popup.show.input returns string | null
     if (!name || !name.trim()) {
-        if (name === null) return; // Cancelled
+        if (name === null) return;
         toastr.warning('Preset name cannot be empty');
         return;
     }
@@ -1543,9 +1531,8 @@ export async function saveCurrentSchemaAsPreset(): Promise<void> {
         `Custom ${STAGE_LABELS[state.activeStageView]} Schema`,
     );
 
-    // Popup.show.input returns string | null
     if (!name || !name.trim()) {
-        if (name === null) return; // Cancelled
+        if (name === null) return;
         toastr.warning('Preset name cannot be empty');
         return;
     }
@@ -1575,7 +1562,7 @@ export async function previewPrompt(): Promise<void> {
         return;
     }
 
-    const { Popup, POPUP_TYPE, getTokenCountAsync } = SillyTavern.getContext();
+    const { Popup, POPUP_TYPE } = SillyTavern.getContext();
     const { DOMPurify } = SillyTavern.libs;
 
     const stage = state.activeStageView;
@@ -1587,9 +1574,9 @@ export async function previewPrompt(): Promise<void> {
         return;
     }
 
-    const promptTokens = await getTokenCountAsync(fullPrompt);
-    const systemTokens = await getTokenCountAsync(systemPrompt);
-    const totalTokens = promptTokens + systemTokens;
+    const promptTokens = await getTokenCount(fullPrompt);
+    const systemTokens = await getTokenCount(systemPrompt);
+    const totalTokens = (promptTokens ?? 0) + (systemTokens ?? 0);
 
     const content = `
     <div class="${MODULE_NAME}_prompt_preview">
@@ -1598,7 +1585,7 @@ export async function previewPrompt(): Promise<void> {
       <div class="${MODULE_NAME}_preview_section">
         <div class="${MODULE_NAME}_preview_header">
           <h4>System Prompt</h4>
-          <span class="${MODULE_NAME}_preview_tokens">${systemTokens.toLocaleString()} tokens</span>
+          <span class="${MODULE_NAME}_preview_tokens">${systemTokens?.toLocaleString() ?? '?'} tokens</span>
         </div>
         <pre class="${MODULE_NAME}_preview_content">${DOMPurify.sanitize(systemPrompt, { ALLOWED_TAGS: [] })}</pre>
       </div>
@@ -1606,7 +1593,7 @@ export async function previewPrompt(): Promise<void> {
       <div class="${MODULE_NAME}_preview_section">
         <div class="${MODULE_NAME}_preview_header">
           <h4>Stage Prompt</h4>
-          <span class="${MODULE_NAME}_preview_tokens">${promptTokens.toLocaleString()} tokens</span>
+          <span class="${MODULE_NAME}_preview_tokens">${promptTokens?.toLocaleString() ?? '?'} tokens</span>
         </div>
         <pre class="${MODULE_NAME}_preview_content">${DOMPurify.sanitize(fullPrompt, { ALLOWED_TAGS: [] })}</pre>
       </div>
@@ -1661,29 +1648,14 @@ async function updateTokenCountsForCharacter(): Promise<void> {
 }
 
 async function updateFieldTokenCountsInternal(container: HTMLElement, fields: PopulatedField[]): Promise<void> {
-    const { getTokenCountAsync } = SillyTavern.getContext();
-
-    const tokenPromises = fields.map(async (field) => {
-        const cached = getTokenFromCache(field.value);
-        if (cached !== null) {
-            return { field, tokens: cached };
-        }
-
-        try {
-            const tokens = await getTokenCountAsync(field.value);
-            setTokenInCache(field.value, tokens);
-            return { field, tokens };
-        } catch {
-            return { field, tokens: null };
-        }
-    });
-
-    const results = await Promise.all(tokenPromises);
+    // Use batch token counting from tokens.ts
+    const items = fields.map(f => ({ key: f.key, text: f.value }));
+    const results = await getTokenCountsKeyed(items);
 
     let totalTokens = 0;
 
-    for (const { field, tokens } of results) {
-        const tokenSpan = container.querySelector(`.${MODULE_NAME}_field_tokens[data-field="${field.key}"]`);
+    for (const { key, tokens } of results) {
+        const tokenSpan = container.querySelector(`.${MODULE_NAME}_field_tokens[data-field="${key}"]`);
         if (tokenSpan) {
             if (tokens !== null) {
                 totalTokens += tokens;

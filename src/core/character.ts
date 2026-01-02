@@ -3,8 +3,9 @@
 // Character utilities - field extraction, formatting, token counting.
 
 import { CHARACTER_FIELDS } from '../constants';
-import { getTokenCount } from './generator';
+import { getTokenCount, getTokenCountsKeyed, getContentTokenEstimate } from './tokens';
 import type { Character, CharacterField, PopulatedField, DepthPrompt, CharacterBook, FieldSelection } from '../types';
+import type { TokenEstimate } from './tokens';
 
 // ============================================================================
 // FIELD VALUE EXTRACTION
@@ -270,16 +271,25 @@ export async function getTotalTokenCount(char: Character): Promise<number | null
 }
 
 /**
+ * Get token estimate with context info for character content
+ */
+export async function getCharacterTokenEstimate(char: Character): Promise<TokenEstimate | null> {
+    const summary = buildCharacterSummary(char);
+    return await getContentTokenEstimate(summary);
+}
+
+/**
  * Get token counts per field (for display)
  */
 export async function getFieldTokenCounts(char: Character): Promise<Map<string, number>> {
     const fields = getPopulatedFields(char);
-    const counts = new Map<string, number>();
+    const items = fields.map(f => ({ key: f.key, text: f.value }));
+    const results = await getTokenCountsKeyed(items);
 
-    for (const field of fields) {
-        const tokens = await getTokenCount(field.value);
+    const counts = new Map<string, number>();
+    for (const { key, tokens } of results) {
         if (tokens !== null) {
-            counts.set(field.key, tokens);
+            counts.set(key, tokens);
         }
     }
 

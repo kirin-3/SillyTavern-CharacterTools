@@ -5,6 +5,7 @@
 
 import { MODULE_NAME, STAGE_LABELS } from '../../../constants';
 import { getPromptPresets, getSchemaPresets, getPromptPreset, getSchemaPreset } from '../../../core/settings';
+import { countTokens } from '../../../core/tokens';
 import type { StageName, StageConfig, PromptPreset, SchemaPreset, SchemaValidationResult } from '../../../types';
 
 // ============================================================================
@@ -91,7 +92,7 @@ export function renderStageConfig(
           placeholder="Enter your prompt for the ${STAGE_LABELS[stage]} stage..."
         >${escapeHtml(promptContent)}</textarea>
         <div class="${MODULE_NAME}_config_footer">
-          <span class="${MODULE_NAME}_char_count">${promptContent.length.toLocaleString()} chars</span>
+          <span class="${MODULE_NAME}_prompt_tokens" id="${MODULE_NAME}_prompt_token_count">-- tokens</span>
         </div>
       </div>
 
@@ -203,7 +204,7 @@ export function updateStageConfigState(
     isGenerating: boolean,
     hasCharacter: boolean,
     schemaValidation?: SchemaValidationResult,
-    resolvedSchemaContent?: string,  // NEW: pre-resolved content from updaters.ts
+    resolvedSchemaContent?: string,
 ): void {
     const promptPresets = getPromptPresets(stage);
     const schemaPresets = getSchemaPresets(stage);
@@ -229,9 +230,16 @@ export function updateStageConfigState(
         }
         promptTextarea.disabled = isGenerating;
 
-        const charCount = container.querySelector(`.${MODULE_NAME}_char_count`);
-        if (charCount) {
-            charCount.textContent = `${promptContent.length.toLocaleString()} chars`;
+        // Update token count for prompt (debounced)
+        const tokenCountEl = container.querySelector(`#${MODULE_NAME}_prompt_token_count`);
+        if (tokenCountEl) {
+            countTokens(promptContent, (tokens) => {
+                if (tokens !== null) {
+                    tokenCountEl.textContent = `${tokens.toLocaleString()} tokens`;
+                } else {
+                    tokenCountEl.textContent = '-- tokens';
+                }
+            });
         }
     }
 

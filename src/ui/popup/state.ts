@@ -29,7 +29,7 @@ export interface PopupState {
     sessionsLoaded: boolean;
     hasUnsavedChanges: boolean;
     lastSavedAt: number | null;
-    sessionListExpanded: boolean;  // NEW: Track collapse state
+    sessionListExpanded: boolean;
 
     // History loading state
     historyLoaded: boolean;
@@ -37,8 +37,7 @@ export interface PopupState {
     // Search state
     searchState: SearchState;
 
-    // Caches
-    tokenCache: Map<string, number>;
+    // Schema validation cache (token cache moved to core/tokens.ts)
     schemaValidationCache: Map<string, SchemaValidationResult>;
 }
 
@@ -93,7 +92,7 @@ export function createInitialState(): PopupState {
         sessionsLoaded: false,
         hasUnsavedChanges: false,
         lastSavedAt: null,
-        sessionListExpanded: false,  // NEW: Default collapsed
+        sessionListExpanded: false,
 
         // History loading
         historyLoaded: true,
@@ -106,7 +105,6 @@ export function createInitialState(): PopupState {
         },
 
         // Caches
-        tokenCache: new Map(),
         schemaValidationCache: new Map(),
     };
 }
@@ -155,56 +153,6 @@ export function clearUnsavedChanges(): void {
             lastSavedAt: Date.now(),
         };
     }
-}
-
-// ============================================================================
-// TOKEN CACHE
-// ============================================================================
-
-const MAX_TOKEN_CACHE_SIZE = 500;
-
-/**
- * Generate a cache key from content using hash + length + bookends.
- */
-function getTokenCacheKey(content: string): string {
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-        const char = content.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-    }
-    // Include first/last chars to reduce collision risk
-    const prefix = content.slice(0, 16);
-    const suffix = content.slice(-16);
-    return `${hash}_${content.length}_${prefix}_${suffix}`;
-}
-
-/**
- * Get cached token count for content, or null if not cached.
- */
-export function getTokenFromCache(content: string): number | null {
-    if (!popupState) return null;
-    const key = getTokenCacheKey(content);
-    return popupState.tokenCache.get(key) ?? null;
-}
-
-/**
- * Cache a token count for content.
- */
-export function setTokenInCache(content: string, count: number): void {
-    if (!popupState) return;
-
-    const key = getTokenCacheKey(content);
-
-    // Evict oldest entry if at capacity
-    if (popupState.tokenCache.size >= MAX_TOKEN_CACHE_SIZE) {
-        const firstKey = popupState.tokenCache.keys().next().value;
-        if (firstKey !== undefined) {
-            popupState.tokenCache.delete(firstKey);
-        }
-    }
-
-    popupState.tokenCache.set(key, count);
 }
 
 // ============================================================================
@@ -261,7 +209,6 @@ export function runCleanupFunctions(): void {
  */
 export function resetAllCaches(): void {
     if (popupState) {
-        popupState.tokenCache.clear();
         popupState.schemaValidationCache.clear();
         popupState.searchState = {
             query: '',

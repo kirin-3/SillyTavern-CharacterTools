@@ -180,7 +180,6 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
               <span class="${MODULE_NAME}_alt_greeting_preview" id="${MODULE_NAME}_alt_greeting_preview_${i}">
                 ${escapeHtml(preview)}${truncated ? '...' : ''}
               </span>
-              <span class="${MODULE_NAME}_alt_greeting_length">${greeting.length} chars</span>
             </div>
             <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${MODULE_NAME}_alt_greeting_content_${i}">${escapeHtml(greeting)}</div>
           </div>

@@ -6,6 +6,7 @@
 import { DEFAULT_MAX_TOKENS, DEFAULT_CONTEXT_SIZE } from '../constants';
 import { getSettings, getFullSystemPrompt } from './settings';
 import { debugLog, logError } from '../debug';
+import { getTokenCount, getPromptTokenEstimate } from './tokens';
 import type {
     StructuredOutputSchema,
     GenerationResult,
@@ -16,6 +17,7 @@ import type {
     GenerationSettings,
     ChatCompletionMessage,
 } from '../types';
+import type { TokenEstimate } from './tokens';
 import { buildStagePrompt, buildRefinementPrompt, getStageSchema } from './pipeline';
 
 // ============================================================================
@@ -877,7 +879,7 @@ function validateStructuredResponse(
 }
 
 // ============================================================================
-// TOKEN ESTIMATION
+// TOKEN ESTIMATION (delegates to tokens.ts)
 // ============================================================================
 
 /**
@@ -886,41 +888,14 @@ function validateStructuredResponse(
 export async function getStageTokenCount(
     state: PipelineState,
     stage: StageName,
-): Promise<{ promptTokens: number; contextSize: number; maxOutput: number; percentage: number } | null> {
-    const ctx = SillyTavern.getContext();
-
+): Promise<TokenEstimate | null> {
     if (!state.character) return null;
 
-    if (typeof ctx.getTokenCountAsync !== 'function') {
-        debugLog('info', 'getTokenCountAsync not available', null);
-        return null;
-    }
+    const prompt = buildStagePrompt(state, stage);
+    if (!prompt) return null;
 
-    try {
-        const prompt = buildStagePrompt(state, stage);
-        if (!prompt) return null;
-
-        const systemPrompt = getFullSystemPrompt(stage);
-        const fullPrompt = systemPrompt + '\n\n' + prompt;
-        const promptTokens = await ctx.getTokenCountAsync(fullPrompt);
-
-        // Get context size and max output from current status
-        const status = getApiStatus();
-        const contextSize = status.contextSize;
-        const maxOutput = status.maxOutput;
-
-        const percentage = Math.round((promptTokens / contextSize) * 100);
-
-        return {
-            promptTokens,
-            contextSize,
-            maxOutput,
-            percentage,
-        };
-    } catch (e) {
-        logError('Token count failed', e);
-        return null;
-    }
+    const systemPrompt = getFullSystemPrompt(stage);
+    return getPromptTokenEstimate(prompt, systemPrompt);
 }
 
 /**
@@ -928,57 +903,14 @@ export async function getStageTokenCount(
  */
 export async function getRefinementTokenCount(
     state: PipelineState,
-): Promise<{ promptTokens: number; contextSize: number; maxOutput: number; percentage: number } | null> {
-    const ctx = SillyTavern.getContext();
-
+): Promise<TokenEstimate | null> {
     if (!state.character || !state.results.rewrite || !state.results.analyze) return null;
 
-    if (typeof ctx.getTokenCountAsync !== 'function') {
-        debugLog('info', 'getTokenCountAsync not available', null);
-        return null;
-    }
+    const prompt = buildRefinementPrompt(state);
+    if (!prompt) return null;
 
-    try {
-        const prompt = buildRefinementPrompt(state);
-        if (!prompt) return null;
-
-        const systemPrompt = getFullSystemPrompt('rewrite');
-        const fullPrompt = systemPrompt + '\n\n' + prompt;
-        const promptTokens = await ctx.getTokenCountAsync(fullPrompt);
-
-        const status = getApiStatus();
-        const contextSize = status.contextSize;
-        const maxOutput = status.maxOutput;
-
-        const percentage = Math.round((promptTokens / contextSize) * 100);
-
-        return {
-            promptTokens,
-            contextSize,
-            maxOutput,
-            percentage,
-        };
-    } catch (e) {
-        logError('Refinement token count failed', e);
-        return null;
-    }
-}
-
-/**
- * Get token count for arbitrary text
- */
-export async function getTokenCount(text: string): Promise<number | null> {
-    const ctx = SillyTavern.getContext();
-
-    if (typeof ctx.getTokenCountAsync !== 'function') {
-        return null;
-    }
-
-    try {
-        return await ctx.getTokenCountAsync(text);
-    } catch {
-        return null;
-    }
+    const systemPrompt = getFullSystemPrompt('rewrite');
+    return getPromptTokenEstimate(prompt, systemPrompt);
 }
 
 // ============================================================================
@@ -1005,3 +937,6 @@ function ensureString(value: unknown): string {
     }
     return String(value);
 }
+
+// Re-export getTokenCount for backward compatibility
+export { getTokenCount };
