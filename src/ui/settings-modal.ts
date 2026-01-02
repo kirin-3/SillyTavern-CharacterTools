@@ -1,6 +1,6 @@
 // src/ui/settings-modal.ts
 //
-// Settings modal popup - now with connection profile support
+// Settings modal popup - with connection profile support
 
 import {
     MODULE_NAME,
@@ -48,9 +48,6 @@ import type { ProfileInfo, ApiStatusInfo } from '../types';
 // CLIPBOARD HELPERS
 // ============================================================================
 
-/**
- * Copy text to clipboard with fallback for non-secure contexts.
- */
 async function copyToClipboard(text: string): Promise<boolean> {
     if (navigator.clipboard?.writeText) {
         try {
@@ -61,7 +58,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
         }
     }
 
-    // Fallback for HTTP/non-secure contexts
     try {
         const textarea = document.createElement('textarea');
         textarea.value = text;
@@ -78,9 +74,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
     }
 }
 
-/**
- * Read text from clipboard. Only works in secure contexts.
- */
 async function readFromClipboard(): Promise<string | null> {
     if (!navigator.clipboard?.readText) {
         return null;
@@ -96,9 +89,6 @@ async function readFromClipboard(): Promise<string | null> {
 // MAIN ENTRY
 // ============================================================================
 
-/**
- * Open the settings modal
- */
 export async function openSettingsModal(onClose?: () => void): Promise<void> {
     const { Popup, POPUP_TYPE } = SillyTavern.getContext();
     const { DOMPurify } = SillyTavern.libs;
@@ -118,7 +108,6 @@ export async function openSettingsModal(onClose?: () => void): Promise<void> {
         debugLog('info', 'Settings modal closed', null);
     });
 
-    // Wait for DOM
     await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     initSettingsListeners();
@@ -155,24 +144,49 @@ function buildSettingsContent(): string {
               <span>Generation</span>
             </div>
 
-            <!-- API Status Banner -->
+            <!-- Current API Status -->
             ${renderApiStatusBanner(apiStatus)}
 
-            <!-- Profile Selection -->
-            <div class="${MODULE_NAME}_profile_selector">
-              ${renderProfileOption('current', 'Use Current Settings',
-        'Uses whatever API is configured in SillyTavern right now',
-        genSettings.mode === 'current', true)}
+            <!-- Mode Toggle -->
+            <div class="${MODULE_NAME}_gen_mode_toggle">
+              <label class="${MODULE_NAME}_gen_mode_option ${genSettings.mode === 'current' ? 'active' : ''}" data-mode="current">
+                <input type="radio" name="${MODULE_NAME}_gen_mode" value="current" ${genSettings.mode === 'current' ? 'checked' : ''}>
+                <i class="fa-solid fa-sliders"></i>
+                <span>Current ST Settings</span>
+              </label>
+              <label class="${MODULE_NAME}_gen_mode_option ${genSettings.mode === 'profile' ? 'active' : ''}" data-mode="profile">
+                <input type="radio" name="${MODULE_NAME}_gen_mode" value="profile" ${genSettings.mode === 'profile' ? 'checked' : ''}>
+                <i class="fa-solid fa-plug"></i>
+                <span>Connection Profile</span>
+              </label>
+            </div>
 
+            <!-- Profile Selection (shown when mode=profile) -->
+            <div class="${MODULE_NAME}_profile_section ${genSettings.mode === 'current' ? 'hidden' : ''}" id="${MODULE_NAME}_profile_section">
               ${profiles.length > 0 ? `
-                <div class="${MODULE_NAME}_profile_divider">
-                  <span>Connection Profiles</span>
+                <div class="${MODULE_NAME}_profile_select_wrapper">
+                  <label class="${MODULE_NAME}_settings_label">Select Profile</label>
+                  <select id="${MODULE_NAME}_profile_select" class="text_pole">
+                    <option value="">-- Select a profile --</option>
+                    ${profiles.map(p => `
+                      <option value="${p.id}"
+                              ${p.id === genSettings.profileId ? 'selected' : ''}
+                              ${!p.isSupported ? 'disabled' : ''}>
+                        ${escapeHtml(p.name)}${!p.isSupported ? ' (invalid)' : ''}
+                      </option>
+                    `).join('')}
+                  </select>
                 </div>
-                ${profiles.map(p => renderProfileOptionFromInfo(p, genSettings.mode === 'profile' && genSettings.profileId === p.id)).join('')}
+                <div id="${MODULE_NAME}_profile_info_container">
+                  ${renderSelectedProfileInfo(profiles.find(p => p.id === genSettings.profileId))}
+                </div>
               ` : `
-                <div class="${MODULE_NAME}_profile_empty">
+                <div class="${MODULE_NAME}_profile_empty_notice">
                   <i class="fa-solid fa-info-circle"></i>
-                  <span>No connection profiles found. Create one in SillyTavern's Connection Manager to use a specific API configuration.</span>
+                  <div>
+                    <strong>No connection profiles found</strong>
+                    <p>Create profiles in SillyTavern's Connection Manager to use specific API configurations.</p>
+                  </div>
                 </div>
               `}
             </div>
@@ -206,7 +220,7 @@ function buildSettingsContent(): string {
                     ${genSettings.maxTokensOverride === null ? 'disabled' : ''}
                   >
                   <span class="${MODULE_NAME}_settings_hint">
-                    Leave unchecked to use the profile's preset settings (recommended)
+                    Leave unchecked to use the profile's preset settings
                   </span>
                 </div>
               </div>
@@ -459,51 +473,42 @@ function renderApiStatusBanner(status: ApiStatusInfo): string {
   `;
 }
 
-function renderProfileOption(
-    id: string,
-    title: string,
-    description: string,
-    isSelected: boolean,
-    isSupported: boolean,
-    extraInfo?: string,
-): string {
-    return `
-    <div class="${MODULE_NAME}_profile_option ${isSelected ? 'selected' : ''} ${!isSupported ? 'disabled' : ''}"
-         data-mode="${id === 'current' ? 'current' : 'profile'}"
-         data-profile-id="${id}"
-         ${!isSupported ? 'title="This profile is not properly configured"' : ''}>
-      <i class="fa-solid ${isSelected ? 'fa-circle-dot' : 'fa-circle'}"></i>
-      <div class="${MODULE_NAME}_profile_option_content">
-        <div class="${MODULE_NAME}_profile_option_header">
-          <span class="${MODULE_NAME}_profile_option_title">${escapeHtml(title)}</span>
-          ${!isSupported ? '<i class="fa-solid fa-triangle-exclamation warning"></i>' : ''}
-        </div>
-        <span class="${MODULE_NAME}_profile_option_desc">${escapeHtml(description)}</span>
-        ${extraInfo ? `<span class="${MODULE_NAME}_profile_option_extra">${escapeHtml(extraInfo)}</span>` : ''}
+function renderSelectedProfileInfo(profile: ProfileInfo | undefined): string {
+    if (!profile) {
+        return `
+      <div class="${MODULE_NAME}_profile_info ${MODULE_NAME}_profile_info_empty">
+        <i class="fa-solid fa-circle-question"></i>
+        <span>Select a profile above</span>
       </div>
-    </div>
-  `;
-}
-
-function renderProfileOptionFromInfo(profile: ProfileInfo, isSelected: boolean): string {
-    const description = `${profile.api} • ${truncateModel(profile.model)}`;
-    const extraInfo = profile.presetName ? `Preset: ${profile.presetName}` : undefined;
+    `;
+    }
 
     return `
-    <div class="${MODULE_NAME}_profile_option ${isSelected ? 'selected' : ''} ${!profile.isSupported ? 'disabled' : ''}"
-         data-mode="profile"
-         data-profile-id="${profile.id}"
-         ${!profile.isSupported ? `title="${profile.validationError || 'Invalid configuration'}"` : ''}>
-      <i class="fa-solid ${isSelected ? 'fa-circle-dot' : 'fa-circle'}"></i>
-      <div class="${MODULE_NAME}_profile_option_content">
-        <div class="${MODULE_NAME}_profile_option_header">
-          <span class="${MODULE_NAME}_profile_option_title">${escapeHtml(profile.name)}</span>
-          <span class="${MODULE_NAME}_api_type_badge ${profile.mode}">${profile.mode === 'cc' ? 'Chat' : 'Text'}</span>
-          ${!profile.isSupported ? '<i class="fa-solid fa-triangle-exclamation warning"></i>' : ''}
-        </div>
-        <span class="${MODULE_NAME}_profile_option_desc">${escapeHtml(description)}</span>
-        ${extraInfo ? `<span class="${MODULE_NAME}_profile_option_extra">${escapeHtml(extraInfo)}</span>` : ''}
+    <div class="${MODULE_NAME}_profile_info ${!profile.isSupported ? 'error' : ''}">
+      <div class="${MODULE_NAME}_profile_info_row">
+        <span class="${MODULE_NAME}_profile_info_label">API</span>
+        <span class="${MODULE_NAME}_profile_info_value">${escapeHtml(profile.api)}</span>
       </div>
+      <div class="${MODULE_NAME}_profile_info_row">
+        <span class="${MODULE_NAME}_profile_info_label">Model</span>
+        <span class="${MODULE_NAME}_profile_info_value" title="${escapeHtml(profile.model)}">${escapeHtml(truncateModel(profile.model))}</span>
+      </div>
+      <div class="${MODULE_NAME}_profile_info_row">
+        <span class="${MODULE_NAME}_profile_info_label">Type</span>
+        <span class="${MODULE_NAME}_api_type_badge ${profile.mode}">${profile.mode === 'cc' ? 'Chat' : 'Text'}</span>
+      </div>
+      ${profile.presetName ? `
+        <div class="${MODULE_NAME}_profile_info_row">
+          <span class="${MODULE_NAME}_profile_info_label">Preset</span>
+          <span class="${MODULE_NAME}_profile_info_value">${escapeHtml(profile.presetName)}</span>
+        </div>
+      ` : ''}
+      ${!profile.isSupported ? `
+        <div class="${MODULE_NAME}_profile_info_error">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>${profile.validationError || 'Profile configuration is invalid'}</span>
+        </div>
+      ` : ''}
     </div>
   `;
 }
@@ -552,53 +557,57 @@ function initSettingsListeners(): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
     if (!modal) return;
 
-    // ========== PROFILE SELECTION ==========
+    // ========== MODE TOGGLE ==========
+    const modeOptions = modal.querySelectorAll(`.${MODULE_NAME}_gen_mode_option`);
+    const profileSection = modal.querySelector(`#${MODULE_NAME}_profile_section`);
 
-    modal.querySelectorAll(`.${MODULE_NAME}_profile_option`).forEach(el => {
-        el.addEventListener('click', () => {
-            const element = el as HTMLElement;
-
-            // Don't allow selecting disabled profiles
-            if (element.classList.contains('disabled')) {
-                toastr.warning('This profile is not properly configured. Check Connection Manager.');
-                return;
-            }
-
+    modeOptions.forEach(option => {
+        option.addEventListener('click', () => {
+            const element = option as HTMLElement;
             const mode = element.dataset.mode as 'current' | 'profile';
-            const profileId = element.dataset.profileId;
+            const radio = element.querySelector('input[type="radio"]') as HTMLInputElement;
 
+            if (radio) radio.checked = true;
+
+            // Update active states
+            modeOptions.forEach(opt => opt.classList.remove('active'));
+            element.classList.add('active');
+
+            // Show/hide profile section
+            profileSection?.classList.toggle('hidden', mode === 'current');
+
+            // Update settings
             if (mode === 'current') {
                 updateGenerationSettings({ mode: 'current', profileId: null });
-            } else if (profileId) {
-                updateGenerationSettings({ mode: 'profile', profileId });
+            } else {
+                const settings = getSettings();
+                updateGenerationSettings({ mode: 'profile', profileId: settings.generationSettings.profileId });
             }
 
-            // Update UI
-            modal.querySelectorAll(`.${MODULE_NAME}_profile_option`).forEach(opt => {
-                opt.classList.remove('selected');
-                const icon = opt.querySelector('i.fa-solid');
-                if (icon) {
-                    icon.classList.remove('fa-circle-dot');
-                    icon.classList.add('fa-circle');
-                }
-            });
-
-            element.classList.add('selected');
-            const icon = element.querySelector('i.fa-solid');
-            if (icon) {
-                icon.classList.remove('fa-circle');
-                icon.classList.add('fa-circle-dot');
-            }
-
-            // Refresh the status banner
             refreshApiStatusBanner();
-
-            toastr.success(`Generation mode: ${mode === 'current' ? 'Current Settings' : 'Connection Profile'}`);
         });
     });
 
-    // ========== MAX TOKENS OVERRIDE ==========
+    // ========== PROFILE SELECT ==========
+    const profileSelect = modal.querySelector(`#${MODULE_NAME}_profile_select`) as HTMLSelectElement;
 
+    profileSelect?.addEventListener('change', () => {
+        const profileId = profileSelect.value || null;
+        updateGenerationSettings({ profileId });
+
+        // Update the profile info display
+        const profiles = getAvailableProfiles();
+        const selectedProfile = profiles.find(p => p.id === profileId);
+        const infoContainer = modal.querySelector(`#${MODULE_NAME}_profile_info_container`);
+
+        if (infoContainer) {
+            infoContainer.innerHTML = renderSelectedProfileInfo(selectedProfile);
+        }
+
+        refreshApiStatusBanner();
+    });
+
+    // ========== MAX TOKENS OVERRIDE ==========
     const useMaxTokensOverride = modal.querySelector(`#${MODULE_NAME}_use_max_tokens_override`) as HTMLInputElement;
     const maxTokensInput = modal.querySelector(`#${MODULE_NAME}_max_tokens_override`) as HTMLInputElement;
 
@@ -624,7 +633,6 @@ function initSettingsListeners(): void {
     });
 
     // ========== USER SYSTEM PROMPT ==========
-
     const userSystemPromptTextarea = modal.querySelector(`#${MODULE_NAME}_user_system_prompt`) as HTMLTextAreaElement;
     const userSystemPromptChars = modal.querySelector(`#${MODULE_NAME}_user_system_prompt_chars`);
     const clearUserSystemPromptBtn = modal.querySelector(`#${MODULE_NAME}_clear_user_system_prompt`);
@@ -644,7 +652,6 @@ function initSettingsListeners(): void {
     });
 
     // ========== BASE SYSTEM PROMPT ==========
-
     const baseSystemPromptTextarea = modal.querySelector(`#${MODULE_NAME}_base_system_prompt`) as HTMLTextAreaElement;
     const baseSystemPromptChars = modal.querySelector(`#${MODULE_NAME}_base_system_prompt_chars`);
     const resetBaseSystemPromptBtn = modal.querySelector(`#${MODULE_NAME}_reset_base_system_prompt`);
@@ -664,7 +671,6 @@ function initSettingsListeners(): void {
     });
 
     // ========== STAGE SYSTEM PROMPTS ==========
-
     for (const stage of ['score', 'rewrite', 'analyze'] as const) {
         const textarea = modal.querySelector(`#${MODULE_NAME}_stage_system_prompt_${stage}`) as HTMLTextAreaElement;
         textarea?.addEventListener('input', () => {
@@ -673,7 +679,6 @@ function initSettingsListeners(): void {
     }
 
     // ========== USER REFINEMENT PROMPT ==========
-
     const userRefinementPromptTextarea = modal.querySelector(`#${MODULE_NAME}_user_refinement_prompt`) as HTMLTextAreaElement;
     const userRefinementPromptChars = modal.querySelector(`#${MODULE_NAME}_user_refinement_prompt_chars`);
     const clearUserRefinementPromptBtn = modal.querySelector(`#${MODULE_NAME}_clear_user_refinement_prompt`);
@@ -693,7 +698,6 @@ function initSettingsListeners(): void {
     });
 
     // ========== BASE REFINEMENT PROMPT ==========
-
     const baseRefinementPromptTextarea = modal.querySelector(`#${MODULE_NAME}_base_refinement_prompt`) as HTMLTextAreaElement;
     const baseRefinementPromptChars = modal.querySelector(`#${MODULE_NAME}_base_refinement_prompt_chars`);
     const resetBaseRefinementPromptBtn = modal.querySelector(`#${MODULE_NAME}_reset_base_refinement_prompt`);
@@ -713,7 +717,6 @@ function initSettingsListeners(): void {
     });
 
     // ========== PRESET MANAGEMENT ==========
-
     modal.addEventListener('click', (e) => {
         const deleteBtn = (e.target as HTMLElement).closest(`.${MODULE_NAME}_preset_delete`);
         if (deleteBtn) {
@@ -741,15 +744,12 @@ function initSettingsListeners(): void {
     importPresetsBtn?.addEventListener('click', async () => {
         const json = await readFromClipboard();
         if (json === null) {
-        // Clipboard read not available - show input dialog instead
             const { Popup } = SillyTavern.getContext();
             const input = await Popup.show.input(
                 'Import Presets',
                 'Paste your preset JSON here:',
                 '',
             );
-            // Popup.show.input returns string | null
-            // null = cancelled, empty string = user submitted nothing
             if (!input || !input.trim()) {
                 return;
             }
@@ -772,9 +772,7 @@ function initSettingsListeners(): void {
         }
     });
 
-
     // ========== DEBUG ==========
-
     const debugModeCheckbox = modal.querySelector(`#${MODULE_NAME}_debug_mode`) as HTMLInputElement;
     const viewLogsBtn = modal.querySelector(`#${MODULE_NAME}_view_logs`);
     const clearLogsBtn = modal.querySelector(`#${MODULE_NAME}_clear_logs`);
@@ -828,27 +826,21 @@ function refreshApiStatusBanner(): void {
     if (!modal) return;
 
     const status = getApiStatus();
-    const bannerContainer = modal.querySelector(`.${MODULE_NAME}_api_banner`)?.parentElement;
 
-    if (bannerContainer) {
-        // Find and remove existing banner and error
-        const existingBanner = bannerContainer.querySelector(`.${MODULE_NAME}_api_banner`);
-        const existingError = bannerContainer.querySelector(`.${MODULE_NAME}_api_error`);
-        existingBanner?.remove();
-        existingError?.remove();
+    // Find the section containing the banner
+    const section = modal.querySelector(`.${MODULE_NAME}_settings_section`);
+    if (!section) return;
 
-        // Insert new banner at the start
-        const newBannerHtml = renderApiStatusBanner(status);
-        const temp = document.createElement('div');
-        temp.innerHTML = newBannerHtml;
+    // Remove existing banner and error
+    const existingBanner = section.querySelector(`.${MODULE_NAME}_api_banner`);
+    const existingError = section.querySelector(`.${MODULE_NAME}_api_error`);
+    existingBanner?.remove();
+    existingError?.remove();
 
-        // Insert before profile selector
-        const profileSelector = bannerContainer.querySelector(`.${MODULE_NAME}_profile_selector`);
-        if (profileSelector) {
-            while (temp.firstChild) {
-                bannerContainer.insertBefore(temp.firstChild, profileSelector);
-            }
-        }
+    // Insert new banner after section header
+    const sectionHeader = section.querySelector(`.${MODULE_NAME}_settings_section_header`);
+    if (sectionHeader) {
+        sectionHeader.insertAdjacentHTML('afterend', renderApiStatusBanner(status));
     }
 }
 
@@ -897,7 +889,6 @@ function refreshDebugLogs(): void {
       `).join('')
         : `<div class="${MODULE_NAME}_debug_log_empty">No logs</div>`;
 
-    // Click handler for log entries
     logList.querySelectorAll(`.${MODULE_NAME}_debug_log_entry`).forEach(el => {
         el.addEventListener('click', () => {
             const index = parseInt((el as HTMLElement).dataset.index || '0', 10);
