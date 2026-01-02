@@ -229,6 +229,38 @@ export async function getFieldTokenCounts(char: Character): Promise<Map<string, 
     return counts;
 }
 
+// Add this function to escape ST macros before they hit generateRaw
+// ============================================================================
+// MACRO HANDLING
+// ============================================================================
+
+/**
+ * Escape ST macros in text so they pass through generateRaw unchanged.
+ * We handle {{char}} ourselves; {{user}} should pass through as literal text.
+ */
+export function escapeSTMacros(text: string, charName: string): string {
+    // First, replace {{char}} with the actual character name (the one we're analyzing)
+    let result = text.replace(/\{\{char\}\}/gi, charName);
+
+    // Escape {{user}} so ST doesn't replace it with the active persona
+    // Use a zero-width space to break the macro pattern
+    result = result.replace(/\{\{user\}\}/gi, '{{u\u200Bser}}');
+
+    // Also escape other common macros that might cause issues
+    result = result.replace(/\{\{persona\}\}/gi, '{{pers\u200Bona}}');
+    result = result.replace(/\{\{original\}\}/gi, '{{orig\u200Binal}}');
+
+    return result;
+}
+
+/**
+ * For display purposes: replace {{char}} with character name,
+ * leave {{user}} visible as-is (it's part of the card content)
+ */
+export function replaceCharMacroForDisplay(text: string, charName: string): string {
+    return text.replace(/\{\{char\}\}/gi, charName);
+}
+
 // ============================================================================
 // FORMATTING
 // ============================================================================
@@ -239,12 +271,15 @@ export async function getFieldTokenCounts(char: Character): Promise<Map<string, 
 export function buildCharacterSummary(char: Character): string {
     const fields = getPopulatedFields(char);
     const sections = fields.map(f => `### ${f.label}\n${f.value}`);
-    return `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
+    const result = `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
+
+    // CHANGED: Escape ST macros
+    return escapeSTMacros(result, char.name);
 }
 
 /**
  * Build character summary using only selected fields.
- * Replaces {{char}} placeholders with actual name.
+ * Escapes ST macros so generateRaw doesn't mangle them.
  */
 export function buildCharacterSummaryFromSelection(
     char: Character,
@@ -277,9 +312,8 @@ export function buildCharacterSummaryFromSelection(
         ? `# CHARACTER: ${char.name}\n\n(No fields selected)`
         : `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
 
-    return result
-        .replace(/\{\{char\}\}/gi, char.name)
-        .replace(/\{\{charName\}\}/gi, char.name);
+    // CHANGED: Escape ST macros so generateRaw doesn't replace them
+    return escapeSTMacros(result, char.name);
 }
 
 /**

@@ -4,7 +4,7 @@
 // PURE RENDER/UPDATE FUNCTIONS ONLY - no state mutation, no action triggers
 
 import { MODULE_NAME } from '../../../constants';
-import { getPopulatedFields } from '../../../core/character';
+import { getPopulatedFields, replaceCharMacroForDisplay } from '../../../core/character';
 import type { Character, PopulatedField, FieldSelection } from '../../../types';
 
 // ============================================================================
@@ -88,7 +88,7 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
           <i class="fa-solid fa-chevron-down"></i>
         </summary>
         <div class="${MODULE_NAME}_char_fields">
-          ${fields.map(f => renderFieldRow(f, selectedFields)).join('')}
+          ${fields.map(f => renderFieldRow(f, selectedFields, char.name)).join('')}
         </div>
       </details>
     </div>
@@ -98,7 +98,7 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
 /**
  * Render a single field row with selection checkbox
  */
-function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): string {
+function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection, charName: string): string {
     const isAltGreetings = field.key === 'alternate_greetings';
 
     let isSelected: boolean;
@@ -131,7 +131,7 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): 
         <span class="${MODULE_NAME}_field_tokens" data-field="${field.key}">...</span>
       </div>
       <div class="${MODULE_NAME}_field_content hidden" id="${MODULE_NAME}_field_content_${field.key}">
-        ${isAltGreetings ? renderAltGreetingsContent(field, selectedFields) : renderSimpleFieldContent(field)}
+        ${isAltGreetings ? renderAltGreetingsContent(field, selectedFields, charName) : renderSimpleFieldContent(field, charName)}
       </div>
     </div>
   `;
@@ -140,7 +140,7 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection): 
 /**
  * Render alternate greetings with individual selection and expandable content
  */
-function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldSelection): string {
+function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldSelection, charName: string): string {
     const greetings = field.rawValue as string[];
     const selectedIndices = (selectedFields[field.key] as number[]) || [];
 
@@ -151,8 +151,9 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
     return `
     <div class="${MODULE_NAME}_alt_greetings">
       ${greetings.map((greeting, i) => {
-        const preview = greeting.substring(0, 100);
-        const truncated = greeting.length > 100;
+        const displayGreeting = replaceCharMacroForDisplay(greeting, charName);
+        const preview = displayGreeting.substring(0, 100);
+        const truncated = displayGreeting.length > 100;
         const greetingId = `${MODULE_NAME}_alt_greeting_${field.key}_${i}`;
 
         return `
@@ -181,7 +182,7 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
                 ${escapeHtml(preview)}${truncated ? '...' : ''}
               </span>
             </div>
-            <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${MODULE_NAME}_alt_greeting_content_${i}">${escapeHtml(greeting)}</div>
+            <div class="${MODULE_NAME}_alt_greeting_full hidden" id="${MODULE_NAME}_alt_greeting_content_${i}">${escapeHtml(displayGreeting)}</div>
           </div>
         `;
     }).join('')}
@@ -194,8 +195,9 @@ function renderAltGreetingsContent(field: PopulatedField, selectedFields: FieldS
 /**
  * Render simple field content
  */
-function renderSimpleFieldContent(field: PopulatedField): string {
-    return `<div class="${MODULE_NAME}_field_text">${escapeHtml(field.value)}</div>`;
+function renderSimpleFieldContent(field: PopulatedField, charName: string): string {
+    const displayValue = replaceCharMacroForDisplay(field.value, charName);
+    return `<div class="${MODULE_NAME}_field_text">${escapeHtml(displayValue)}</div>`;
 }
 
 // ============================================================================
