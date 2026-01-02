@@ -273,35 +273,32 @@ export async function updateTokenEstimate(): Promise<void> {
         return;
     }
 
-    // Check for budget warning (rewrite stage especially)
     const isRewriteStage = state.activeStageView === 'rewrite';
-    let budgetWarning = '';
     let colorClass = '';
+    let warning = '';
 
-    // Context percentage warnings
-    if (counts.percentage > 100) {
-        colorClass = 'danger';
-    } else if (counts.percentage > 80) {
-        colorClass = 'warning';
-    }
-
-    // For rewrite stage, warn if character content likely exceeds max output
-    if (isRewriteStage && counts.promptTokens > 0) {
-        // Rough estimate: character content is about 60-70% of prompt tokens
-        // If that exceeds max output, the rewrite will be truncated
+    if (isRewriteStage) {
+        // For rewrite: character content needs to fit in output
+        // Estimate character tokens as ~65% of prompt (rest is system prompt + instructions)
         const estimatedCharTokens = Math.round(counts.promptTokens * 0.65);
+
         if (estimatedCharTokens > counts.maxOutput) {
-            budgetWarning = ` ⚠️ Output may truncate (${counts.maxOutput}t limit)`;
             colorClass = 'danger';
+            warning = ` ⚠️ Exceeds ${counts.maxOutput.toLocaleString()}t output limit`;
         } else if (estimatedCharTokens > counts.maxOutput * 0.8) {
-            budgetWarning = ' ⚠️ Near output limit';
-            colorClass = colorClass || 'warning';
+            colorClass = 'warning';
+            warning = ' ⚠️ Near output limit';
         }
+
+        tokenEl.innerHTML = `<i class="fa-solid fa-microchip"></i> ~${estimatedCharTokens.toLocaleString()}t char → ${counts.maxOutput.toLocaleString()}t max${warning}`;
+    } else {
+        // For score/analyze: just show prompt size, less critical
+        tokenEl.innerHTML = `<i class="fa-solid fa-microchip"></i> ${counts.promptTokens.toLocaleString()}t prompt`;
     }
 
-    tokenEl.innerHTML = `<i class="fa-solid fa-microchip"></i> ${counts.promptTokens.toLocaleString()}t (${counts.percentage}%)${budgetWarning}`;
     tokenEl.className = `${MODULE_NAME}_token_estimate ${colorClass}`;
 }
+
 
 export function updateSessionManager(): void {
     const el = getElement();

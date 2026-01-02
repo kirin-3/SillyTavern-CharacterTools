@@ -2701,9 +2701,11 @@
   white-space: nowrap;
 }
 
-.character_tools_api_context {
+.character_tools_api_limits {
   opacity: 0.7;
   white-space: nowrap;
+  font-family: var(--monoFontFamily);
+  font-size: var(--ct-font-meta);
 }
 
 .character_tools_api_error {

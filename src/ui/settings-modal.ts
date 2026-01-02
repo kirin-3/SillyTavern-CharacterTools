@@ -86,6 +86,22 @@ async function readFromClipboard(): Promise<string | null> {
 }
 
 // ============================================================================
+// TOKEN COUNTING HELPER
+// ============================================================================
+
+async function getTokenCountForText(text: string): Promise<number | null> {
+    const ctx = SillyTavern.getContext();
+    if (typeof ctx.getTokenCountAsync !== 'function') {
+        return null;
+    }
+    try {
+        return await ctx.getTokenCountAsync(text);
+    } catch {
+        return null;
+    }
+}
+
+// ============================================================================
 // MAIN ENTRY
 // ============================================================================
 
@@ -111,6 +127,7 @@ export async function openSettingsModal(onClose?: () => void): Promise<void> {
     await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     initSettingsListeners();
+    updatePromptTokenCounts();
 
     debugLog('info', 'Settings modal opened', null);
 }
@@ -248,7 +265,7 @@ function buildSettingsContent(): string {
                 placeholder="Add your custom instructions here..."
               >${escapeHtml(settings.userSystemPrompt || '')}</textarea>
               <div class="${MODULE_NAME}_settings_row_spread">
-                <span id="${MODULE_NAME}_user_system_prompt_chars">${(settings.userSystemPrompt || '').length} chars</span>
+                <span id="${MODULE_NAME}_user_system_prompt_tokens">-- tokens</span>
                 <button id="${MODULE_NAME}_clear_user_system_prompt" class="menu_button">
                   <i class="fa-solid fa-eraser"></i>
                   <span>Clear</span>
@@ -271,7 +288,7 @@ function buildSettingsContent(): string {
                   rows="6"
                 >${escapeHtml(settings.baseSystemPrompt || '')}</textarea>
                 <div class="${MODULE_NAME}_settings_row_spread">
-                  <span id="${MODULE_NAME}_base_system_prompt_chars">${(settings.baseSystemPrompt || '').length} chars</span>
+                  <span id="${MODULE_NAME}_base_system_prompt_tokens">-- tokens</span>
                   <button id="${MODULE_NAME}_reset_base_system_prompt" class="menu_button">
                     <i class="fa-solid fa-rotate-left"></i>
                     <span>Reset</span>
@@ -301,7 +318,7 @@ function buildSettingsContent(): string {
                 placeholder="Add your refinement instructions here..."
               >${escapeHtml(settings.userRefinementPrompt || '')}</textarea>
               <div class="${MODULE_NAME}_settings_row_spread">
-                <span id="${MODULE_NAME}_user_refinement_prompt_chars">${(settings.userRefinementPrompt || '').length} chars</span>
+                <span id="${MODULE_NAME}_user_refinement_prompt_tokens">-- tokens</span>
                 <button id="${MODULE_NAME}_clear_user_refinement_prompt" class="menu_button">
                   <i class="fa-solid fa-eraser"></i>
                   <span>Clear</span>
@@ -321,7 +338,7 @@ function buildSettingsContent(): string {
                   rows="6"
                 >${escapeHtml(settings.baseRefinementPrompt || '')}</textarea>
                 <div class="${MODULE_NAME}_settings_row_spread">
-                  <span id="${MODULE_NAME}_base_refinement_prompt_chars">${(settings.baseRefinementPrompt || '').length} chars</span>
+                  <span id="${MODULE_NAME}_base_refinement_prompt_tokens">-- tokens</span>
                   <button id="${MODULE_NAME}_reset_base_refinement_prompt" class="menu_button">
                     <i class="fa-solid fa-rotate-left"></i>
                     <span>Reset</span>
@@ -461,7 +478,7 @@ function renderApiStatusBanner(status: ApiStatusInfo): string {
       </div>
       <div class="${MODULE_NAME}_api_banner_right">
         <span class="${MODULE_NAME}_api_model" title="${escapeHtml(status.model)}">${escapeHtml(status.modelDisplay)}</span>
-        <span class="${MODULE_NAME}_api_context">${status.contextSize.toLocaleString()} ctx</span>
+        <span class="${MODULE_NAME}_api_limits">${status.maxOutput.toLocaleString()}t max</span>
       </div>
     </div>
     ${status.error ? `
@@ -550,8 +567,69 @@ function renderPresetList(type: 'prompt' | 'schema'): string {
 }
 
 // ============================================================================
+// TOKEN COUNT UPDATES
+// ============================================================================
+
+async function updatePromptTokenCounts(): Promise<void> {
+    const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
+    if (!modal) return;
+
+    const settings = getSettings();
+
+    const prompts: Array<[string, string]> = [
+        [`${MODULE_NAME}_user_system_prompt_tokens`, settings.userSystemPrompt || ''],
+        [`${MODULE_NAME}_base_system_prompt_tokens`, settings.baseSystemPrompt || ''],
+        [`${MODULE_NAME}_user_refinement_prompt_tokens`, settings.userRefinementPrompt || ''],
+        [`${MODULE_NAME}_base_refinement_prompt_tokens`, settings.baseRefinementPrompt || ''],
+    ];
+
+    for (const [id, text] of prompts) {
+        const el = modal.querySelector(`#${id}`);
+        if (!el) continue;
+
+        if (!text.trim()) {
+            el.textContent = '0 tokens';
+            continue;
+        }
+
+        const tokens = await getTokenCountForText(text);
+        if (tokens !== null) {
+            el.textContent = `${tokens.toLocaleString()} tokens`;
+        } else {
+            el.textContent = `${text.length} chars`;
+        }
+    }
+}
+
+async function updateSingleTokenCount(elementId: string, text: string): Promise<void> {
+    const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
+    if (!modal) return;
+
+    const el = modal.querySelector(`#${elementId}`);
+    if (!el) return;
+
+    if (!text.trim()) {
+        el.textContent = '0 tokens';
+        return;
+    }
+
+    const tokens = await getTokenCountForText(text);
+    if (tokens !== null) {
+        el.textContent = `${tokens.toLocaleString()} tokens`;
+    } else {
+        el.textContent = `${text.length} chars`;
+    }
+}
+
+// ============================================================================
 // EVENT LISTENERS
 // ============================================================================
+
+// Debounce timers
+let userSystemPromptDebounce: ReturnType<typeof setTimeout> | null = null;
+let baseSystemPromptDebounce: ReturnType<typeof setTimeout> | null = null;
+let userRefinementPromptDebounce: ReturnType<typeof setTimeout> | null = null;
+let baseRefinementPromptDebounce: ReturnType<typeof setTimeout> | null = null;
 
 function initSettingsListeners(): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
@@ -624,6 +702,8 @@ function initSettingsListeners(): void {
         } else {
             updateGenerationSettings({ maxTokensOverride: null });
         }
+
+        refreshApiStatusBanner();
     });
 
     maxTokensInput?.addEventListener('change', () => {
@@ -632,44 +712,48 @@ function initSettingsListeners(): void {
         const value = parseInt(maxTokensInput.value, 10);
         if (!isNaN(value) && value >= 100 && value <= 32000) {
             updateGenerationSettings({ maxTokensOverride: value });
+            refreshApiStatusBanner();
         }
     });
 
     // ========== USER SYSTEM PROMPT ==========
     const userSystemPromptTextarea = modal.querySelector(`#${MODULE_NAME}_user_system_prompt`) as HTMLTextAreaElement;
-    const userSystemPromptChars = modal.querySelector(`#${MODULE_NAME}_user_system_prompt_chars`);
     const clearUserSystemPromptBtn = modal.querySelector(`#${MODULE_NAME}_clear_user_system_prompt`);
 
     userSystemPromptTextarea?.addEventListener('input', () => {
         updateUserSystemPrompt(userSystemPromptTextarea.value);
-        if (userSystemPromptChars) {
-            userSystemPromptChars.textContent = `${userSystemPromptTextarea.value.length} chars`;
-        }
+
+        // Debounced token count update
+        if (userSystemPromptDebounce) clearTimeout(userSystemPromptDebounce);
+        userSystemPromptDebounce = setTimeout(() => {
+            updateSingleTokenCount(`${MODULE_NAME}_user_system_prompt_tokens`, userSystemPromptTextarea.value);
+        }, 300);
     });
 
     clearUserSystemPromptBtn?.addEventListener('click', () => {
         resetUserSystemPrompt();
         if (userSystemPromptTextarea) userSystemPromptTextarea.value = '';
-        if (userSystemPromptChars) userSystemPromptChars.textContent = '0 chars';
+        updateSingleTokenCount(`${MODULE_NAME}_user_system_prompt_tokens`, '');
         toastr.info('User system prompt cleared');
     });
 
     // ========== BASE SYSTEM PROMPT ==========
     const baseSystemPromptTextarea = modal.querySelector(`#${MODULE_NAME}_base_system_prompt`) as HTMLTextAreaElement;
-    const baseSystemPromptChars = modal.querySelector(`#${MODULE_NAME}_base_system_prompt_chars`);
     const resetBaseSystemPromptBtn = modal.querySelector(`#${MODULE_NAME}_reset_base_system_prompt`);
 
     baseSystemPromptTextarea?.addEventListener('input', () => {
         updateBaseSystemPrompt(baseSystemPromptTextarea.value);
-        if (baseSystemPromptChars) {
-            baseSystemPromptChars.textContent = `${baseSystemPromptTextarea.value.length} chars`;
-        }
+
+        if (baseSystemPromptDebounce) clearTimeout(baseSystemPromptDebounce);
+        baseSystemPromptDebounce = setTimeout(() => {
+            updateSingleTokenCount(`${MODULE_NAME}_base_system_prompt_tokens`, baseSystemPromptTextarea.value);
+        }, 300);
     });
 
     resetBaseSystemPromptBtn?.addEventListener('click', () => {
         resetBaseSystemPrompt();
         if (baseSystemPromptTextarea) baseSystemPromptTextarea.value = BASE_SYSTEM_PROMPT;
-        if (baseSystemPromptChars) baseSystemPromptChars.textContent = `${BASE_SYSTEM_PROMPT.length} chars`;
+        updateSingleTokenCount(`${MODULE_NAME}_base_system_prompt_tokens`, BASE_SYSTEM_PROMPT);
         toastr.info('Base system prompt reset to default');
     });
 
@@ -683,39 +767,41 @@ function initSettingsListeners(): void {
 
     // ========== USER REFINEMENT PROMPT ==========
     const userRefinementPromptTextarea = modal.querySelector(`#${MODULE_NAME}_user_refinement_prompt`) as HTMLTextAreaElement;
-    const userRefinementPromptChars = modal.querySelector(`#${MODULE_NAME}_user_refinement_prompt_chars`);
     const clearUserRefinementPromptBtn = modal.querySelector(`#${MODULE_NAME}_clear_user_refinement_prompt`);
 
     userRefinementPromptTextarea?.addEventListener('input', () => {
         updateUserRefinementPrompt(userRefinementPromptTextarea.value);
-        if (userRefinementPromptChars) {
-            userRefinementPromptChars.textContent = `${userRefinementPromptTextarea.value.length} chars`;
-        }
+
+        if (userRefinementPromptDebounce) clearTimeout(userRefinementPromptDebounce);
+        userRefinementPromptDebounce = setTimeout(() => {
+            updateSingleTokenCount(`${MODULE_NAME}_user_refinement_prompt_tokens`, userRefinementPromptTextarea.value);
+        }, 300);
     });
 
     clearUserRefinementPromptBtn?.addEventListener('click', () => {
         resetUserRefinementPrompt();
         if (userRefinementPromptTextarea) userRefinementPromptTextarea.value = '';
-        if (userRefinementPromptChars) userRefinementPromptChars.textContent = '0 chars';
+        updateSingleTokenCount(`${MODULE_NAME}_user_refinement_prompt_tokens`, '');
         toastr.info('User refinement prompt cleared');
     });
 
     // ========== BASE REFINEMENT PROMPT ==========
     const baseRefinementPromptTextarea = modal.querySelector(`#${MODULE_NAME}_base_refinement_prompt`) as HTMLTextAreaElement;
-    const baseRefinementPromptChars = modal.querySelector(`#${MODULE_NAME}_base_refinement_prompt_chars`);
     const resetBaseRefinementPromptBtn = modal.querySelector(`#${MODULE_NAME}_reset_base_refinement_prompt`);
 
     baseRefinementPromptTextarea?.addEventListener('input', () => {
         updateBaseRefinementPrompt(baseRefinementPromptTextarea.value);
-        if (baseRefinementPromptChars) {
-            baseRefinementPromptChars.textContent = `${baseRefinementPromptTextarea.value.length} chars`;
-        }
+
+        if (baseRefinementPromptDebounce) clearTimeout(baseRefinementPromptDebounce);
+        baseRefinementPromptDebounce = setTimeout(() => {
+            updateSingleTokenCount(`${MODULE_NAME}_base_refinement_prompt_tokens`, baseRefinementPromptTextarea.value);
+        }, 300);
     });
 
     resetBaseRefinementPromptBtn?.addEventListener('click', () => {
         resetBaseRefinementPrompt();
         if (baseRefinementPromptTextarea) baseRefinementPromptTextarea.value = BASE_REFINEMENT_PROMPT;
-        if (baseRefinementPromptChars) baseRefinementPromptChars.textContent = `${BASE_REFINEMENT_PROMPT.length} chars`;
+        updateSingleTokenCount(`${MODULE_NAME}_base_refinement_prompt_tokens`, BASE_REFINEMENT_PROMPT);
         toastr.info('Base refinement prompt reset to default');
     });
 
