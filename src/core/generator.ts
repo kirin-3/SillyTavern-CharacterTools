@@ -105,19 +105,47 @@ export function getProfile(profileId: string): ConnectionProfile | null {
  * Check if a profile is valid and ready for use
  */
 export function isProfileValid(profileId: string): boolean {
-    const CMRS = SillyTavern.getContext().ConnectionManagerRequestService;
+    const ctx = SillyTavern.getContext();
+    const CMRS = ctx.ConnectionManagerRequestService;
 
-    if (!CMRS) return false;
+    if (!CMRS) {
+        debugLog('info', 'isProfileValid: no CMRS', null);
+        return false;
+    }
 
-    const profile = getProfile(profileId);
-    if (!profile) return false;
+    if (typeof CMRS.getProfile !== 'function') {
+        debugLog('info', 'isProfileValid: getProfile not a function', null);
+        return false;
+    }
+
+    let profile;
+    try {
+        profile = CMRS.getProfile(profileId);
+    } catch (e) {
+        debugLog('error', 'isProfileValid: getProfile threw', e);
+        return false;
+    }
+
+    if (!profile) {
+        debugLog('info', 'isProfileValid: profile not found', { profileId });
+        return false;
+    }
+
+    if (typeof CMRS.isProfileSupported !== 'function') {
+        debugLog('info', 'isProfileValid: isProfileSupported not a function', null);
+        return false;
+    }
 
     try {
-        return CMRS.isProfileSupported(profile);
-    } catch {
+        const supported = CMRS.isProfileSupported(profile);
+        debugLog('info', 'isProfileValid: isProfileSupported returned', { supported, profileId });
+        return supported;
+    } catch (e) {
+        debugLog('error', 'isProfileValid: isProfileSupported threw', e);
         return false;
     }
 }
+
 
 // ============================================================================
 // API STATUS
@@ -167,18 +195,25 @@ function isCurrentApiReady(): boolean {
  */
 export function isApiReady(): boolean {
     const settings = getSettings();
+    const mode = settings.generationSettings.mode;
+    const profileId = settings.generationSettings.profileId;
 
-    if (settings.generationSettings.mode === 'current') {
-        return isCurrentApiReady();
+    debugLog('info', 'isApiReady check', { mode, profileId });
+
+    if (mode === 'current') {
+        const result = isCurrentApiReady();
+        debugLog('info', 'isCurrentApiReady result', { result });
+        return result;
     }
 
-    // Profile mode - check if profile exists and is valid
-    const profileId = settings.generationSettings.profileId;
     if (!profileId) {
+        debugLog('info', 'isApiReady: no profileId', null);
         return false;
     }
 
-    return isProfileValid(profileId);
+    const result = isProfileValid(profileId);
+    debugLog('info', 'isProfileValid result', { profileId, result });
+    return result;
 }
 
 /**
