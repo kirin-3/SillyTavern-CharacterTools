@@ -6,7 +6,7 @@ import type {
     SchemaPreset,
     StageDefaults,
     StageName,
-    GenerationConfig,
+    GenerationSettings,
     Settings,
 } from './types';
 
@@ -16,8 +16,8 @@ import type {
 
 export const MODULE_NAME = 'character_tools';
 export const EXTENSION_PATH = 'third-party/SillyTavern-CharacterTools';
-export const SETTINGS_VERSION = 4;
-export const VERSION = '1.2.1';
+export const SETTINGS_VERSION = 5;  // CHANGED: Bumped for generationSettings migration
+export const VERSION = '1.2.1';     // CHANGED: Version bump for refactor
 export const CURRENT_PRESET_VERSION = 2;
 
 // ============================================================================
@@ -418,6 +418,16 @@ export const BUILTIN_SCHEMA_PRESETS: readonly SchemaPreset[] = Object.freeze([
 ]);
 
 // ============================================================================
+// DEFAULT GENERATION SETTINGS
+// ============================================================================
+
+export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
+    mode: 'current',
+    profileId: null,
+    maxTokensOverride: null,
+};
+
+// ============================================================================
 // DEFAULT STAGE CONFIGS
 // ============================================================================
 
@@ -446,26 +456,11 @@ export const DEFAULT_STAGE_DEFAULTS: Record<StageName, StageDefaults> = {
 };
 
 // ============================================================================
-// DEFAULT GENERATION CONFIG
-// ============================================================================
-
-export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
-    source: 'openrouter',
-    model: 'anthropic/claude-sonnet-4',
-    temperature: 1,
-    maxTokens: 4096,
-    frequencyPenalty: 0,
-    presencePenalty: 0,
-    topP: 1,
-};
-
-// ============================================================================
 // COMPLETE DEFAULT SETTINGS
 // ============================================================================
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
-    useCurrentSettings: true,
-    generationConfig: DEFAULT_GENERATION_CONFIG,
+    generationSettings: DEFAULT_GENERATION_SETTINGS,
 
     // Split prompts
     baseSystemPrompt: BASE_SYSTEM_PROMPT,
@@ -500,8 +495,6 @@ export const TEMPLATE_PLACEHOLDERS = {
     CURRENT_ANALYSIS: '{{current_analysis}}',
     ITERATION_NUMBER: '{{iteration_number}}',
     CHARACTER_NAME: '{{char_name}}',
-    // {{char}} is also supported as an alias for CHARACTER_NAME
-    // {{user}} is NOT supported - left unchanged if used
 } as const;
 
 // ============================================================================
@@ -521,3 +514,5 @@ export const DEBOUNCE_DELAY = {
 export const MAX_DROPDOWN_RESULTS = 10;
 export const MAX_DEBUG_LOG_ENTRIES = 100;
 export const MAX_ITERATION_HISTORY = 20;
+export const DEFAULT_MAX_TOKENS = 4096;
+export const DEFAULT_CONTEXT_SIZE = 8192;

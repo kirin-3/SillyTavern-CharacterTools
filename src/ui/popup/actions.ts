@@ -156,7 +156,7 @@ export async function selectCharacter(char: Character, index: number): Promise<v
             sessions: [],
             activeSessionId: null,
             searchState: { query: '', results: [], selectedIndex: -1 },
-            historyLoaded: false,  // ADD: Will be set true after session load completes
+            historyLoaded: false,
         }));
 
         updateAllComponents();
@@ -171,13 +171,10 @@ export async function selectCharacter(char: Character, index: number): Promise<v
 
             updateState(() => ({
                 sessions: data.sessions,
-                activeSessionId: null,  // CHANGED: Don't set active session on load
+                activeSessionId: null,
                 sessionsLoaded: true,
                 historyLoaded: true,
             }));
-
-            // REMOVED: The entire if block that auto-restored sessions
-            // Sessions are available in the list—user can manually load if they want
 
             updateSessionManager();
             updateIterationHistory();
@@ -306,13 +303,11 @@ export function expandAltGreeting(greetingIndex: number): void {
         const isExpanded = !content.classList.contains('hidden');
 
         if (isExpanded) {
-            // Collapse: show preview, hide full
             content.classList.add('hidden');
             preview.classList.remove('hidden');
             icon.classList.remove('fa-chevron-down');
             icon.classList.add('fa-chevron-right');
         } else {
-            // Expand: hide preview, show full
             preview.classList.add('hidden');
             content.classList.remove('hidden');
             icon.classList.remove('fa-chevron-right');
@@ -375,7 +370,6 @@ export function selectSearchResult(characterIndex: number): void {
     const state = getState();
     if (!state) return;
 
-    // Find the result by character index, not array position
     const result = state.searchState.results.find(r => r.index === characterIndex);
     if (result) {
         selectCharacter(result.char, result.index);
@@ -449,7 +443,7 @@ export async function resetCurrentPipeline(): Promise<void> {
     const state = getState();
     if (!state) return;
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const hasContent = state.pipeline.results.score ||
         state.pipeline.results.rewrite ||
@@ -461,7 +455,8 @@ export async function resetCurrentPipeline(): Promise<void> {
             'This will clear all results and start fresh. Your session will be saved first. Continue?',
         );
 
-        if (confirmed !== POPUP_RESULT.AFFIRMATIVE) return;
+        // Popup.show.confirm returns boolean: true = confirmed, false = cancelled
+        if (!confirmed) return;
 
         if (state.pipeline.character && state.hasUnsavedChanges) {
             await saveSession(state.pipeline.character, state.pipeline, state.activeSessionId || undefined);
@@ -496,7 +491,7 @@ export async function resetCurrentPipeline(): Promise<void> {
 
 export async function runSingleStage(stage: StageName): Promise<void> {
     const state = getState();
-    if (!state || state.isGenerating || state.isRefining) return; // NEW: Reset flag
+    if (!state || state.isGenerating || state.isRefining) return;
 
     if (!isApiReady()) {
         toastr.error('API is not connected');
@@ -556,7 +551,6 @@ export async function runSingleStage(stage: StageName): Promise<void> {
     } finally {
         updateState(() => ({ isGenerating: false }));
         abortController = null;
-        // Use setTimeout to break out of any potential update cycle
         setTimeout(() => updateAllComponents(), 0);
     }
 }
@@ -614,7 +608,6 @@ export async function runSelectedStages(): Promise<void> {
         }
     }
 
-    // Final UI sync after all stages complete or abort
     setTimeout(() => updateAllComponents(), 0);
 }
 
@@ -627,7 +620,6 @@ export async function runAllStages(): Promise<void> {
     updateResultsPanel();
 
     await runSelectedStages();
-    // runSelectedStages already has the setTimeout at the end
 }
 
 export async function runRefinement(): Promise<void> {
@@ -742,7 +734,6 @@ export async function runRefinement(): Promise<void> {
     } finally {
         updateState(() => ({ isRefining: false }));
         abortController = null;
-        // Use setTimeout to break out of any potential update cycle
         setTimeout(() => updateAllComponents(), 0);
     }
 }
@@ -751,7 +742,6 @@ export function cancelGeneration(): void {
     if (abortController) {
         abortController.abort();
     }
-    // NEW: Also call stopGeneration directly for immediate effect
     const { stopGeneration } = SillyTavern.getContext();
     if (typeof stopGeneration === 'function') {
         stopGeneration();
@@ -856,7 +846,7 @@ export async function revertToIteration(iterationIndex: number): Promise<void> {
     const state = getState();
     if (!state) return;
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const iteration = state.pipeline.iterationHistory[iterationIndex];
     if (!iteration) {
@@ -869,7 +859,8 @@ export async function revertToIteration(iterationIndex: number): Promise<void> {
         `Revert to iteration ${iterationIndex + 1}? Current results will be replaced.`,
     );
 
-    if (confirmed !== POPUP_RESULT.AFFIRMATIVE) return;
+    // Popup.show.confirm returns boolean
+    if (!confirmed) return;
 
     updatePipeline(p => pipelineRevertToIteration(p, iterationIndex));
     markUnsavedChanges();
@@ -958,7 +949,7 @@ export async function createNewSession(): Promise<void> {
     const state = getState();
     if (!state?.pipeline.character) return;
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     if (state.hasUnsavedChanges) {
         const save = await Popup.show.confirm(
@@ -966,7 +957,8 @@ export async function createNewSession(): Promise<void> {
             'You have unsaved changes. Save before starting a new session?',
         );
 
-        if (save === POPUP_RESULT.AFFIRMATIVE) {
+        // Popup.show.confirm returns boolean
+        if (save) {
             await saveCurrentSession();
         }
     }
@@ -977,7 +969,8 @@ export async function createNewSession(): Promise<void> {
         `Session ${state.sessions.length + 1}`,
     );
 
-    if (label === null || label === POPUP_RESULT.CANCELLED) return;
+    // Popup.show.input returns string | null (null = cancelled)
+    if (!label) return;
 
     const character = state.pipeline.character;
     const characterIndex = state.pipeline.characterIndex;
@@ -994,7 +987,7 @@ export async function createNewSession(): Promise<void> {
             character,
             getState()!.pipeline,
             undefined,
-            typeof label === 'string' ? label.trim() || undefined : undefined,
+            label.trim() || undefined,
         );
 
         updateState(() => ({ activeSessionId: sessionId }));
@@ -1017,7 +1010,7 @@ export async function loadSession(sessionId: string): Promise<void> {
 
     const character = state.pipeline.character;
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     if (state.hasUnsavedChanges) {
         const save = await Popup.show.confirm(
@@ -1025,11 +1018,11 @@ export async function loadSession(sessionId: string): Promise<void> {
             'You have unsaved changes. Save before loading another session?',
         );
 
-        if (save === POPUP_RESULT.AFFIRMATIVE) {
+        // Popup.show.confirm returns boolean
+        if (save) {
             await saveCurrentSession();
-        } else if (save === POPUP_RESULT.CANCELLED) {
-            return;
         }
+        // If false (cancelled/no), we still proceed to load
     }
 
     const session = state.sessions.find(s => s.id === sessionId);
@@ -1057,7 +1050,7 @@ export async function renameSession(sessionId: string): Promise<void> {
     const state = getState();
     if (!state?.pipeline.character) return;
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const session = state.sessions.find(s => s.id === sessionId);
     if (!session) return;
@@ -1068,8 +1061,8 @@ export async function renameSession(sessionId: string): Promise<void> {
         session.label,
     );
 
-    if (newLabel === null || newLabel === POPUP_RESULT.CANCELLED) return;
-    if (typeof newLabel !== 'string' || !newLabel.trim()) return;
+    // Popup.show.input returns string | null
+    if (!newLabel || !newLabel.trim()) return;
 
     const success = await persistenceRenameSession(state.pipeline.character, sessionId, newLabel.trim());
 
@@ -1087,7 +1080,7 @@ export async function deleteSessionById(sessionId: string): Promise<void> {
     const state = getState();
     if (!state?.pipeline.character) return;
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const session = state.sessions.find(s => s.id === sessionId);
     if (!session) return;
@@ -1097,7 +1090,8 @@ export async function deleteSessionById(sessionId: string): Promise<void> {
         `Delete "${session.label}"? This cannot be undone.`,
     );
 
-    if (confirmed !== POPUP_RESULT.AFFIRMATIVE) return;
+    // Popup.show.confirm returns boolean
+    if (!confirmed) return;
 
     const wasActive = sessionId === state.activeSessionId;
     const success = await deleteSession(state.pipeline.character, sessionId);
@@ -1144,14 +1138,15 @@ export async function clearAllSessions(): Promise<void> {
 
     const character = state.pipeline.character;
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const confirmed = await Popup.show.confirm(
         'Clear All Sessions?',
         `Delete ALL sessions for ${character.name}? This cannot be undone.`,
     );
 
-    if (confirmed !== POPUP_RESULT.AFFIRMATIVE) return;
+    // Popup.show.confirm returns boolean
+    if (!confirmed) return;
 
     const count = await deleteAllCharacterSessions(character);
 
@@ -1314,15 +1309,16 @@ export function toggleStructuredOutput(enabled: boolean): void {
 }
 
 export async function generateSchema(): Promise<void> {
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const description = await Popup.show.input(
         'Generate Schema',
-        'Describe the structure you want (e.g., <q>"scores for each field 1-10, list of suggestions, overall rating"</q>):\n',
+        'Describe the structure you want (e.g., "scores for each field 1-10, list of suggestions, overall rating"):',
         '',
     );
 
-    if (description === null || description === POPUP_RESULT.CANCELLED || !description.trim()) {
+    // Popup.show.input returns string | null
+    if (!description || !description.trim()) {
         return;
     }
 
@@ -1487,7 +1483,7 @@ export async function saveCurrentPromptAsPreset(): Promise<void> {
         return;
     }
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const name = await Popup.show.input(
         'Save Prompt Preset',
@@ -1495,8 +1491,9 @@ export async function saveCurrentPromptAsPreset(): Promise<void> {
         `Custom ${STAGE_LABELS[state.activeStageView]} Prompt`,
     );
 
-    if (name === null || name === POPUP_RESULT.CANCELLED) return;
-    if (!name.trim()) {
+    // Popup.show.input returns string | null
+    if (!name || !name.trim()) {
+        if (name === null) return; // Cancelled
         toastr.warning('Preset name cannot be empty');
         return;
     }
@@ -1538,7 +1535,7 @@ export async function saveCurrentSchemaAsPreset(): Promise<void> {
         return;
     }
 
-    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    const { Popup } = SillyTavern.getContext();
 
     const name = await Popup.show.input(
         'Save Schema Preset',
@@ -1546,8 +1543,9 @@ export async function saveCurrentSchemaAsPreset(): Promise<void> {
         `Custom ${STAGE_LABELS[state.activeStageView]} Schema`,
     );
 
-    if (name === null || name === POPUP_RESULT.CANCELLED) return;
-    if (!name.trim()) {
+    // Popup.show.input returns string | null
+    if (!name || !name.trim()) {
+        if (name === null) return; // Cancelled
         toastr.warning('Preset name cannot be empty');
         return;
     }

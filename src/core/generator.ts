@@ -1,8 +1,9 @@
 // src/core/generator.ts
 //
 // Handles LLM generation for pipeline stages and refinement.
-// Supports both ST's current settings and custom API configuration.
+// Two paths: generateRaw (current settings) or CMRS (connection profiles).
 
+import { DEFAULT_MAX_TOKENS, DEFAULT_CONTEXT_SIZE } from '../constants';
 import { getSettings, getFullSystemPrompt } from './settings';
 import { debugLog, logError } from '../debug';
 import type {
@@ -10,126 +11,332 @@ import type {
     GenerationResult,
     PipelineState,
     StageName,
+    ProfileInfo,
+    ApiStatusInfo,
+    GenerationSettings,
+    ChatCompletionMessage,
 } from '../types';
 import { buildStagePrompt, buildRefinementPrompt, getStageSchema } from './pipeline';
 
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface ConnectionProfile {
+    id: string;
+    mode: 'cc' | 'tc';
+    api: string;
+    preset: string;
+    model: string;
+    name: string;
+    proxy: string;
+    exclude: string[];
+    'stop-strings': string;
+    'start-reply-with': string;
+    'reasoning-template': string;
+    'prompt-post-processing': string;
+    'secret-id': string;
+}
+
+interface ExtractedData {
+    content: string;
+    reasoning: string;
+}
 
 // ============================================================================
-// HELPER: Source to Model Key Mapping
+// PROFILE DISCOVERY
 // ============================================================================
 
 /**
- * Maps chat completion source to its corresponding model settings key.
- * Most follow the pattern `${source}_model`, but some are special.
+ * Get all available connection profiles with validation info
  */
-function getModelKeyForSource(source: string): string {
-    // Special case: Google AI Studio uses 'google_model', not 'makersuite_model'
-    if (source === 'makersuite') {
-        return 'google_model';
+export function getAvailableProfiles(): ProfileInfo[] {
+    const CMRS = SillyTavern.getContext().ConnectionManagerRequestService;
+
+    if (!CMRS || typeof CMRS.getSupportedProfiles !== 'function') {
+        debugLog('info', 'ConnectionManagerRequestService not available', null);
+        return [];
     }
-    return `${source}_model`;
+
+    try {
+        const profiles = CMRS.getSupportedProfiles() as ConnectionProfile[];
+
+        return profiles.map(profile => {
+            const isSupported = CMRS.isProfileSupported(profile);
+
+            return {
+                id: profile.id,
+                name: profile.name,
+                model: profile.model,
+                api: profile.api,
+                mode: profile.mode,
+                presetName: profile.preset,
+                isSupported,
+                validationError: isSupported ? null : 'Profile configuration is invalid',
+            };
+        });
+    } catch (e) {
+        logError('Failed to get profiles', e);
+        return [];
+    }
 }
 
+/**
+ * Get a specific profile by ID
+ */
+export function getProfile(profileId: string): ConnectionProfile | null {
+    const ctx = SillyTavern.getContext();
+    const CMRS = ctx.ConnectionManagerRequestService;
+
+    if (!CMRS || typeof CMRS.getProfile !== 'function') {
+        return null;
+    }
+
+    try {
+        return CMRS.getProfile(profileId) as ConnectionProfile | undefined ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Check if a profile is valid and ready for use
+ */
+export function isProfileValid(profileId: string): boolean {
+    const CMRS = SillyTavern.getContext().ConnectionManagerRequestService;
+
+    if (!CMRS) return false;
+
+    const profile = getProfile(profileId);
+    if (!profile) return false;
+
+    try {
+        return CMRS.isProfileSupported(profile);
+    } catch {
+        return false;
+    }
+}
 
 // ============================================================================
 // API STATUS
 // ============================================================================
 
-
 /**
- * Check if the API is ready for generation
+ * Check if the current ST API is ready (for 'current' mode)
  */
-export function isApiReady(): boolean {
-    const settings = getSettings();
+function isCurrentApiReady(): boolean {
+    const ctx = SillyTavern.getContext();
+    const ccs = ctx.chatCompletionSettings;
 
-    // When using custom settings, we can't verify API status without
-    // actually making a request. Assume it's ready since the user explicitly
-    // configured it.
-    if (!settings.useCurrentSettings) {
+    // If bypass is enabled, trust it
+    if (ccs?.bypass_status_check) {
         return true;
     }
 
-    const { onlineStatus, chatCompletionSettings } = SillyTavern.getContext();
-
-    // If bypass is enabled in ST settings, trust it
-    if (chatCompletionSettings?.bypass_status_check) {
-        return true;
-    }
-
-    // No status at all = not ready
-    if (!onlineStatus) {
-        return false;
-    }
-
-    const status = String(onlineStatus).toLowerCase();
+    const status = String(ctx.onlineStatus || '').toLowerCase();
 
     // Standard success states
     if (['valid', 'connected', 'ok', 'ready'].includes(status)) {
         return true;
     }
 
-    // Partial success states (key saved but not tested)
+    // Partial success states
     if (status.includes('key') || status.includes('saved')) {
         return true;
     }
 
-    // Any non-empty status that isn't an obvious error
-    const errorPatterns = ['error', 'fail', 'invalid', 'unauthorized', 'missing', 'no connection'];
-    if (!errorPatterns.some(p => status.includes(p))) {
-        return true;
+    // No status at all is not ready
+    if (!status) {
+        return false;
     }
 
-    return false;
+    // Check for error patterns
+    const errorPatterns = ['error', 'fail', 'invalid', 'unauthorized', 'missing', 'no connection'];
+    if (errorPatterns.some(p => status.includes(p))) {
+        return false;
+    }
+
+    // Any other non-empty status - assume it's okay
+    return true;
+}
+
+/**
+ * Check if generation is possible given current settings
+ */
+export function isApiReady(): boolean {
+    const settings = getSettings();
+
+    if (settings.generationSettings.mode === 'current') {
+        return isCurrentApiReady();
+    }
+
+    // Profile mode - check if profile exists and is valid
+    const profileId = settings.generationSettings.profileId;
+    if (!profileId) {
+        return false;
+    }
+
+    return isProfileValid(profileId);
+}
+
+/**
+ * Get comprehensive API status for display
+ */
+export function getApiStatus(generationSettings?: GenerationSettings): ApiStatusInfo {
+    const settings = generationSettings || getSettings().generationSettings;
+
+    if (settings.mode === 'current') {
+        return getCurrentApiStatus();
+    }
+
+    return getProfileApiStatus(settings.profileId);
 }
 
 
 /**
- * Get current API info for display
+ * Legacy helper for existing code that just needs basic info
  */
 export function getApiInfo(): { source: string; model: string; isReady: boolean } {
-    const context = SillyTavern.getContext();
-    const settings = getSettings();
+    const status = getApiStatus();
+    return {
+        source: status.source,
+        model: status.model,
+        isReady: status.isReady,
+    };
+}
 
-    if (settings.useCurrentSettings) {
-        const ccs = context.chatCompletionSettings || {};
-        const source = ccs.chat_completion_source || context.mainApi || 'unknown';
+function getCurrentApiStatus(): ApiStatusInfo {
+    const ctx = SillyTavern.getContext();
+    const ccs = ctx.chatCompletionSettings || {};
 
-        // Get the correct model key for this source (handles special cases)
-        const modelKey = getModelKeyForSource(source);
-        const model = ccs[modelKey] || 'unknown';
+    let model = 'unknown';
+    try {
+        model = ctx.getChatCompletionModel?.() || 'unknown';
+    } catch {
+        // Some ST versions may not have this
+    }
 
+    const source = ccs.chat_completion_source || ctx.mainApi || 'unknown';
+    const isReady = isCurrentApiReady();
+
+    return {
+        mode: 'current',
+        displayName: 'Current Settings',
+        source,
+        model,
+        modelDisplay: truncateModel(model),
+        apiType: ctx.mainApi === 'textgenerationwebui' ? 'tc' : 'cc',
+        contextSize: ccs.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE,
+        isReady,
+        statusText: ctx.onlineStatus || 'Unknown',
+        error: isReady ? null : `API not connected (status: ${ctx.onlineStatus || 'unknown'})`,
+    };
+}
+
+function getProfileApiStatus(profileId: string | null): ApiStatusInfo {
+    if (!profileId) {
         return {
-            source,
-            model: String(model),
-            isReady: isApiReady(),
+            mode: 'profile',
+            displayName: 'No Profile Selected',
+            source: 'none',
+            model: 'none',
+            modelDisplay: 'None',
+            apiType: 'cc',
+            contextSize: DEFAULT_CONTEXT_SIZE,
+            isReady: false,
+            statusText: 'Not configured',
+            error: 'Select a connection profile in settings',
         };
     }
 
-    // CHANGED: Using custom generation config from extension settings
-    // We can't verify an external API's status without making a request,
-    // so assume it's ready since the user explicitly configured it.
+    const profile = getProfile(profileId);
+
+    if (!profile) {
+        return {
+            mode: 'profile',
+            displayName: 'Profile Not Found',
+            source: 'unknown',
+            model: 'unknown',
+            modelDisplay: 'Unknown',
+            apiType: 'cc',
+            contextSize: DEFAULT_CONTEXT_SIZE,
+            isReady: false,
+            statusText: 'Error',
+            error: 'Selected profile no longer exists. It may have been deleted.',
+        };
+    }
+
+    const isSupported = isProfileValid(profileId);
+
     return {
-        source: settings.generationConfig.source,
-        model: settings.generationConfig.model,
-        isReady: true,
+        mode: 'profile',
+        displayName: profile.name,
+        source: profile.api,
+        model: profile.model,
+        modelDisplay: truncateModel(profile.model),
+        apiType: profile.mode,
+        contextSize: getContextSizeForProfile(profile),
+        isReady: isSupported,
+        statusText: isSupported ? 'Ready' : 'Invalid',
+        error: isSupported ? null : 'Profile configuration is invalid. Check Connection Manager.',
     };
 }
+
+function truncateModel(model: string): string {
+    const stripped = model
+        .replace(/^anthropic\//, '')
+        .replace(/^openai\//, '')
+        .replace(/^google\//, '')
+        .replace(/^meta-llama\//, 'llama-')
+        .replace(/^mistralai\//, 'mistral-');
+
+    if (stripped.length > 28) {
+        return stripped.substring(0, 25) + '...';
+    }
+    return stripped;
+}
+
+function getContextSizeForProfile(profile: ConnectionProfile): number {
+    const ctx = SillyTavern.getContext();
+
+    // Try to get from profile's linked preset
+    try {
+        const apiId = profile.mode === 'tc' ? 'textgenerationwebui' : 'openai';
+        const pm = ctx.getPresetManager?.(apiId);
+
+        if (pm && profile.preset) {
+            const preset = pm.getCompletionPresetByName?.(profile.preset) as Record<string, unknown> | undefined;
+            if (preset) {
+                if (typeof preset.openai_max_context === 'number') {
+                    return preset.openai_max_context;
+                }
+                if (typeof preset.max_context === 'number') {
+                    return preset.max_context;
+                }
+            }
+        }
+    } catch {
+        // Fall through to fallback
+    }
+
+    // Fallback to current settings
+    const ccs = ctx.chatCompletionSettings;
+    return ccs?.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+}
+
 
 // ============================================================================
 // MAIN GENERATION FUNCTION
 // ============================================================================
 
 /**
- * Run generation for a pipeline stage.
+ * Run generation for a pipeline stage
  */
 export async function runStageGeneration(
     state: PipelineState,
     stage: StageName,
     signal?: AbortSignal,
 ): Promise<GenerationResult> {
-    const context = SillyTavern.getContext();
-    const settings = getSettings();
-
     if (signal?.aborted) {
         return { success: false, error: 'Generation cancelled' };
     }
@@ -138,12 +345,13 @@ export async function runStageGeneration(
         return { success: false, error: 'No character selected' };
     }
 
+    const settings = getSettings();
+
     if (!isApiReady()) {
-        const status = context.onlineStatus || 'unknown';
-        logError('API not ready', { onlineStatus: status });
+        const status = getApiStatus();
         return {
             success: false,
-            error: `API is not connected (status: ${status}). Check your connection settings.`,
+            error: status.error || 'API is not ready. Check your connection settings.',
         };
     }
 
@@ -156,27 +364,46 @@ export async function runStageGeneration(
     const jsonSchema = config.useStructuredOutput ? getStageSchema(state, stage) : null;
     const systemPrompt = getFullSystemPrompt(stage);
 
-    const apiInfo = getApiInfo();
+    const apiStatus = getApiStatus();
     debugLog('info', 'Starting stage generation', {
         stage,
         character: state.character.name,
-        useCurrentSettings: settings.useCurrentSettings,
+        mode: settings.generationSettings.mode,
         useStructured: !!jsonSchema,
         schemaName: jsonSchema?.name,
         promptLength: userPrompt.length,
         systemPromptLength: systemPrompt.length,
-        apiSource: apiInfo.source,
-        apiModel: apiInfo.model,
+        apiSource: apiStatus.source,
+        apiModel: apiStatus.model,
     });
 
-    const result = await executeGeneration(
-        systemPrompt,
-        userPrompt,
-        jsonSchema,
-        signal,
-        settings.useCurrentSettings,
-    );
+    const maxTokens = settings.generationSettings.maxTokensOverride ?? DEFAULT_MAX_TOKENS;
 
+    let result: GenerationResult;
+
+    if (settings.generationSettings.mode === 'current') {
+        result = await generateWithCurrent(
+            userPrompt,
+            systemPrompt,
+            { maxTokens, jsonSchema, signal },
+        );
+    } else {
+        const profileId = settings.generationSettings.profileId;
+        if (!profileId) {
+            return { success: false, error: 'No connection profile selected. Configure one in settings.' };
+        }
+
+        result = await generateWithProfile(
+            profileId,
+            [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+            ],
+            { maxTokens, jsonSchema, signal },
+        );
+    }
+
+    // Validate structured response if needed
     if (result.success && jsonSchema) {
         return validateStructuredResponse(result.response, jsonSchema);
     }
@@ -185,15 +412,12 @@ export async function runStageGeneration(
 }
 
 /**
- * Run refinement generation.
+ * Run refinement generation
  */
 export async function runRefinementGeneration(
     state: PipelineState,
     signal?: AbortSignal,
 ): Promise<GenerationResult> {
-    const context = SillyTavern.getContext();
-    const settings = getSettings();
-
     if (signal?.aborted) {
         return { success: false, error: 'Generation cancelled' };
     }
@@ -206,12 +430,13 @@ export async function runRefinementGeneration(
         return { success: false, error: 'Refinement requires both rewrite and analyze results' };
     }
 
+    const settings = getSettings();
+
     if (!isApiReady()) {
-        const status = context.onlineStatus || 'unknown';
-        logError('API not ready', { onlineStatus: status });
+        const status = getApiStatus();
         return {
             success: false,
-            error: `API is not connected (status: ${status}). Check your connection settings.`,
+            error: status.error || 'API is not ready. Check your connection settings.',
         };
     }
 
@@ -228,14 +453,291 @@ export async function runRefinementGeneration(
         promptLength: userPrompt.length,
     });
 
-    return await executeGeneration(
-        systemPrompt,
-        userPrompt,
-        null,
-        signal,
-        settings.useCurrentSettings,
-    );
+    const maxTokens = settings.generationSettings.maxTokensOverride ?? DEFAULT_MAX_TOKENS;
+
+    if (settings.generationSettings.mode === 'current') {
+        return await generateWithCurrent(
+            userPrompt,
+            systemPrompt,
+            { maxTokens, signal },
+        );
+    } else {
+        const profileId = settings.generationSettings.profileId;
+        if (!profileId) {
+            return { success: false, error: 'No connection profile selected.' };
+        }
+
+        return await generateWithProfile(
+            profileId,
+            [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+            ],
+            { maxTokens, signal },
+        );
+    }
 }
+
+// ============================================================================
+// GENERATION PATHS
+// ============================================================================
+
+interface GenerationOptions {
+    maxTokens?: number;
+    jsonSchema?: StructuredOutputSchema | null;
+    signal?: AbortSignal;
+}
+
+/**
+ * Generate using ST's current settings via generateRaw
+ */
+async function generateWithCurrent(
+    prompt: string,
+    systemPrompt: string,
+    options: GenerationOptions,
+): Promise<GenerationResult> {
+    const ctx = SillyTavern.getContext();
+
+    if (typeof ctx.generateRaw !== 'function') {
+        return {
+            success: false,
+            error: 'generateRaw not available. SillyTavern version may be incompatible.',
+        };
+    }
+
+    // Set up abort handler
+    let abortHandler: (() => void) | null = null;
+    if (options.signal && typeof ctx.stopGeneration === 'function') {
+        abortHandler = () => {
+            debugLog('info', 'Calling stopGeneration', null);
+            ctx.stopGeneration();
+        };
+        options.signal.addEventListener('abort', abortHandler, { once: true });
+    }
+
+    try {
+        if (options.signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+        }
+
+        debugLog('request', 'generateRaw request', {
+            hasSchema: !!options.jsonSchema,
+            schemaName: options.jsonSchema?.name,
+            systemPromptLength: systemPrompt.length,
+            userPromptLength: prompt.length,
+            maxTokens: options.maxTokens,
+        });
+
+        const response = await ctx.generateRaw({
+            prompt,
+            systemPrompt,
+            responseLength: options.maxTokens ?? null,
+            jsonSchema: options.jsonSchema ?? null,
+        });
+
+        // Cleanup handler
+        if (abortHandler && options.signal) {
+            options.signal.removeEventListener('abort', abortHandler);
+        }
+
+        if (options.signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+        }
+
+        const responseStr = ensureString(response);
+
+        if (!responseStr || responseStr.trim() === '') {
+            return { success: false, error: 'Empty response from API' };
+        }
+
+        debugLog('response', 'generateRaw response', {
+            length: responseStr.length,
+            preview: responseStr.substring(0, 200),
+        });
+
+        return {
+            success: true,
+            response: responseStr,
+            isStructured: !!options.jsonSchema,
+        };
+    } catch (err) {
+        // Cleanup handler on error
+        if (abortHandler && options.signal) {
+            options.signal.removeEventListener('abort', abortHandler);
+        }
+        return handleGenerationError(err);
+    }
+}
+
+/**
+ * Generate using a connection profile via CMRS
+ */
+async function generateWithProfile(
+    profileId: string,
+    messages: ChatCompletionMessage[],
+    options: GenerationOptions,
+): Promise<GenerationResult> {
+    const ctx = SillyTavern.getContext();
+    const CMRS = ctx.ConnectionManagerRequestService;
+
+    if (!CMRS || typeof CMRS.sendRequest !== 'function') {
+        return {
+            success: false,
+            error: 'Connection Manager service not available. Update SillyTavern.',
+        };
+    }
+
+    // Validate profile exists
+    const profile = getProfile(profileId);
+    if (!profile) {
+        return {
+            success: false,
+            error: 'Selected connection profile not found. It may have been deleted.',
+        };
+    }
+
+    // Validate profile is supported
+    if (!CMRS.isProfileSupported(profile)) {
+        return {
+            success: false,
+            error: `Connection profile "${profile.name}" is not properly configured. Check Connection Manager.`,
+        };
+    }
+
+    try {
+        if (options.signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+        }
+
+        debugLog('request', 'CMRS request', {
+            profileId,
+            profileName: profile.name,
+            mode: profile.mode,
+            api: profile.api,
+            model: profile.model,
+            maxTokens: options.maxTokens,
+            hasSchema: !!options.jsonSchema,
+        });
+
+        // Build payload overrides
+        const overridePayload: Record<string, unknown> = {};
+        if (options.jsonSchema) {
+            overridePayload.json_schema = options.jsonSchema;
+        }
+
+        const result = await CMRS.sendRequest(
+            profileId,
+            messages,
+            options.maxTokens ?? DEFAULT_MAX_TOKENS,
+            {
+                stream: false,
+                extractData: true,
+                includePreset: true,
+                includeInstruct: profile.mode === 'tc',
+                signal: options.signal ?? null,
+            },
+            Object.keys(overridePayload).length > 0 ? overridePayload : undefined,
+        );
+
+        if (options.signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+        }
+
+        const extracted = result as ExtractedData;
+
+        if (!extracted.content && !extracted.reasoning) {
+            return { success: false, error: 'Empty response from API' };
+        }
+
+        debugLog('response', 'CMRS response', {
+            contentLength: extracted.content?.length || 0,
+            hasReasoning: !!extracted.reasoning,
+            preview: (extracted.content || '').substring(0, 200),
+        });
+
+        return {
+            success: true,
+            response: extracted.content,
+            reasoning: extracted.reasoning || undefined,
+            isStructured: !!options.jsonSchema,
+        };
+    } catch (err) {
+        return handleGenerationError(err);
+    }
+}
+
+// ============================================================================
+// ERROR HANDLING
+// ============================================================================
+
+/**
+ * Unified error handler with categorized messages
+ */
+function handleGenerationError(err: unknown): GenerationResult {
+    if ((err as Error).name === 'AbortError') {
+        debugLog('info', 'Generation aborted', null);
+        return { success: false, error: 'Generation cancelled' };
+    }
+
+    const message = err instanceof Error ? err.message : String(err);
+
+    // Categorize common API errors
+    if (message.includes('401') || message.includes('unauthorized')) {
+        return {
+            success: false,
+            error: 'API authentication failed. Check your API key in the connection profile.',
+        };
+    }
+    if (message.includes('429') || message.includes('rate limit')) {
+        return {
+            success: false,
+            error: 'Rate limited. Please wait and try again.',
+        };
+    }
+    if (message.includes('500') || message.includes('502') || message.includes('503')) {
+        return {
+            success: false,
+            error: 'API server error. The service may be temporarily unavailable.',
+        };
+    }
+    if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
+        return {
+            success: false,
+            error: 'Request timed out. Check your connection or try a different model.',
+        };
+    }
+    if (message.includes('network') || message.includes('ECONNREFUSED')) {
+        return {
+            success: false,
+            error: 'Network error. Check your internet connection.',
+        };
+    }
+    if (message.includes('context') || message.includes('too long') || message.includes('maximum context')) {
+        return {
+            success: false,
+            error: 'Prompt too long for model context. Try selecting fewer character fields.',
+        };
+    }
+    if (message.includes('invalid_api_key') || message.includes('API key')) {
+        return {
+            success: false,
+            error: 'Invalid API key. Check your credentials in SillyTavern settings.',
+        };
+    }
+    if (message.includes('model') && (message.includes('not found') || message.includes('does not exist'))) {
+        return {
+            success: false,
+            error: 'Model not found. It may have been deprecated or renamed.',
+        };
+    }
+
+    logError('Generation failed', { error: err, message });
+    return { success: false, error: message };
+}
+
+// ============================================================================
+// VALIDATION
+// ============================================================================
 
 /**
  * Validate structured response and fall back gracefully if parsing fails
@@ -285,439 +787,22 @@ function validateStructuredResponse(
     }
 }
 
-/**
- * Core generation execution with proper cancellation support
- */
-async function executeGeneration(
-    systemPrompt: string,
-    userPrompt: string,
-    jsonSchema: StructuredOutputSchema | null,
-    signal: AbortSignal | undefined,
-    useCurrentSettings: boolean,
-): Promise<GenerationResult> {
-    if (signal?.aborted) {
-        return { success: false, error: 'Generation cancelled' };
-    }
-
-    try {
-        let response: string;
-
-        if (useCurrentSettings) {
-            response = await generateWithCurrentSettings(
-                systemPrompt,
-                userPrompt,
-                jsonSchema,
-                signal,
-            );
-        } else {
-            response = await generateWithCustomSettings(
-                systemPrompt,
-                userPrompt,
-                jsonSchema,
-                signal,
-            );
-        }
-
-        // Check again after generation completes
-        if (signal?.aborted) {
-            return { success: false, error: 'Generation cancelled' };
-        }
-
-        if (!response || response.trim() === '') {
-            logError('Empty response', null);
-            return { success: false, error: 'Empty response from API' };
-        }
-
-        debugLog('info', 'Generation complete', {
-            responseLength: response.length,
-            isStructured: !!jsonSchema,
-        });
-
-        return {
-            success: true,
-            response,
-            isStructured: !!jsonSchema,
-        };
-    } catch (err) {
-        if ((err as Error).name === 'AbortError' || signal?.aborted) {
-            debugLog('info', 'Generation aborted', null);
-            return { success: false, error: 'Generation cancelled' };
-        }
-
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        logError('Generation exception', { message: errorMessage, error: err });
-
-        if (errorMessage.includes('401') || errorMessage.includes('unauthorized')) {
-            return { success: false, error: 'API authentication failed. Check your API key.' };
-        }
-        if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
-            return { success: false, error: 'Rate limited. Please wait and try again.' };
-        }
-        if (errorMessage.includes('500') || errorMessage.includes('502') || errorMessage.includes('503')) {
-            return { success: false, error: 'API server error. The service may be temporarily unavailable.' };
-        }
-        if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
-            return { success: false, error: 'Request timed out. Try again or check your connection.' };
-        }
-        if (errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED')) {
-            return { success: false, error: 'Network error. Check your internet connection.' };
-        }
-
-        return { success: false, error: errorMessage };
-    }
-}
-
-// ============================================================================
-// GENERATION METHODS
-// ============================================================================
-
-/**
- * Generate using ST's current API settings via generateRaw.
- * Uses stopGeneration for cancellation support.
- */
-async function generateWithCurrentSettings(
-    systemPrompt: string,
-    userPrompt: string,
-    jsonSchema: StructuredOutputSchema | null,
-    signal?: AbortSignal,
-): Promise<string> {
-    const { generateRaw, stopGeneration } = SillyTavern.getContext();
-
-    if (typeof generateRaw !== 'function') {
-        throw new Error('generateRaw not available - SillyTavern version may be incompatible');
-    }
-
-    debugLog('request', 'generateRaw request', {
-        hasSchema: !!jsonSchema,
-        schemaName: jsonSchema?.name,
-        systemPromptLength: systemPrompt.length,
-        userPromptLength: userPrompt.length,
-    });
-
-    if (signal?.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
-    }
-
-    // Set up abort listener to call ST's stopGeneration
-    let abortHandler: (() => void) | null = null;
-    if (signal && typeof stopGeneration === 'function') {
-        abortHandler = () => {
-            debugLog('info', 'Calling stopGeneration', null);
-            stopGeneration();
-        };
-        signal.addEventListener('abort', abortHandler, { once: true });
-    }
-
-    try {
-        const rawResponse = await generateRaw({
-            prompt: userPrompt,
-            systemPrompt: systemPrompt,
-            jsonSchema: jsonSchema ?? undefined,
-        });
-
-        // Clean up listener if we completed normally
-        if (abortHandler && signal) {
-            signal.removeEventListener('abort', abortHandler);
-        }
-
-        if (signal?.aborted) {
-            throw new DOMException('Aborted', 'AbortError');
-        }
-
-        const response = ensureString(rawResponse);
-
-        debugLog('response', 'generateRaw response', {
-            type: typeof rawResponse,
-            rawType: rawResponse === null ? 'null' : rawResponse === undefined ? 'undefined' : typeof rawResponse,
-            length: response.length,
-            preview: response.substring(0, 200),
-        });
-
-        return response;
-    } catch (err) {
-        // Clean up listener on error too
-        if (abortHandler && signal) {
-            signal.removeEventListener('abort', abortHandler);
-        }
-        throw err;
-    }
-}
-
-/**
- * Generate using custom API settings via ChatCompletionService.
- * Uses stopGeneration for cancellation support.
- */
-async function generateWithCustomSettings(
-    systemPrompt: string,
-    userPrompt: string,
-    jsonSchema: StructuredOutputSchema | null,
-    signal?: AbortSignal,
-): Promise<string> {
-    const { ChatCompletionService, stopGeneration } = SillyTavern.getContext();
-    const settings = getSettings();
-    const config = settings.generationConfig;
-
-    if (!ChatCompletionService || typeof ChatCompletionService.sendRequest !== 'function') {
-        throw new Error('ChatCompletionService not available - falling back may be needed');
-    }
-
-    const requestOptions: Record<string, unknown> = {
-        stream: true,
-        messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-        ],
-        chat_completion_source: config.source,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-    };
-
-    if (config.source === 'openrouter') {
-        requestOptions.model = config.model;
-    } else if (config.source === 'openai' || config.source === 'azure_openai') {
-        requestOptions.model = config.model;
-    } else {
-        requestOptions.model = config.model;
-    }
-
-    if (config.frequencyPenalty !== 0) {
-        requestOptions.frequency_penalty = config.frequencyPenalty;
-    }
-    if (config.presencePenalty !== 0) {
-        requestOptions.presence_penalty = config.presencePenalty;
-    }
-    if (config.topP !== 1) {
-        requestOptions.top_p = config.topP;
-    }
-
-    if (jsonSchema) {
-        requestOptions.json_schema = jsonSchema;
-    }
-
-    debugLog('request', 'ChatCompletionService request', {
-        source: config.source,
-        model: config.model,
-        stream: true,
-        hasSchema: !!jsonSchema,
-        messageCount: 2,
-    });
-
-    if (signal?.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
-    }
-
-    // Set up abort listener to call ST's stopGeneration
-    let abortHandler: (() => void) | null = null;
-    if (signal && typeof stopGeneration === 'function') {
-        abortHandler = () => {
-            debugLog('info', 'Calling stopGeneration (custom settings)', null);
-            stopGeneration();
-        };
-        signal.addEventListener('abort', abortHandler, { once: true });
-    }
-
-    try {
-        const result = await ChatCompletionService.sendRequest(requestOptions);
-
-        // Clean up listener if we completed normally
-        if (abortHandler && signal) {
-            signal.removeEventListener('abort', abortHandler);
-        }
-
-        debugLog('response', 'ChatCompletionService result type', {
-            type: typeof result,
-            isFunction: typeof result === 'function',
-            isGenerator: result && typeof result === 'object' && Symbol.asyncIterator in result,
-            isNull: result === null,
-            isUndefined: result === undefined,
-        });
-
-        let response: string;
-
-        if (typeof result === 'function') {
-            response = await consumeStreamGenerator(result, signal);
-        } else if (result && typeof result === 'object') {
-            const resultObj = result as Record<string, unknown>;
-
-            if (resultObj.error) {
-                logError('API returned error in response object', result);
-                const errorMsg = typeof resultObj.error === 'string'
-                    ? resultObj.error
-                    : JSON.stringify(resultObj.error);
-                throw new Error(`API error: ${errorMsg}`);
-            }
-
-            const message = resultObj.message as Record<string, unknown> | undefined;
-            const choices = resultObj.choices as Array<Record<string, unknown>> | undefined;
-
-            response = ensureString(
-                resultObj.content ||
-                resultObj.text ||
-                message?.content ||
-                (choices?.[0]?.message as Record<string, unknown> | undefined)?.content ||
-                choices?.[0]?.text ||
-                result,
-            );
-        } else if (typeof result === 'string') {
-            response = result;
-        } else {
-            response = ensureString(result);
-        }
-
-        debugLog('response', 'Final response', {
-            length: response.length,
-            preview: response.substring(0, 200),
-        });
-
-        return response;
-    } catch (err) {
-        // Clean up listener on error too
-        if (abortHandler && signal) {
-            signal.removeEventListener('abort', abortHandler);
-        }
-        throw err;
-    }
-}
-
-// src/core/generator.ts
-
-/**
- * Consume a streaming generator and return the final accumulated text
- */
-async function consumeStreamGenerator(
-    generatorFn: () => AsyncGenerator<unknown>,
-    signal?: AbortSignal,
-): Promise<string> {
-    let finalText = '';
-    let generator: AsyncGenerator<unknown> | null = null;
-
-    try {
-        generator = generatorFn();
-
-        while (true) {
-            if (signal?.aborted) {
-                debugLog('info', 'Stream aborted before next chunk', { textSoFar: finalText.length });
-                break;
-            }
-
-            // Race the next chunk against the abort signal
-            const nextChunk = generator.next();
-
-            let result: IteratorResult<unknown>;
-
-            if (signal) {
-                // Create a promise that rejects when aborted
-                const abortPromise = new Promise<never>((_, reject) => {
-                    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
-                    signal.addEventListener('abort', onAbort, { once: true });
-                    // Clean up if nextChunk resolves first
-                    nextChunk.then(() => signal.removeEventListener('abort', onAbort))
-                        .catch(() => signal.removeEventListener('abort', onAbort));
-                });
-
-                result = await Promise.race([nextChunk, abortPromise]);
-            } else {
-                result = await nextChunk;
-            }
-
-            if (result.done) {
-                break;
-            }
-
-            const chunk = result.value;
-
-            if (typeof chunk === 'string') {
-                finalText = chunk;
-            } else if (chunk && typeof chunk === 'object') {
-                const chunkObj = chunk as Record<string, unknown>;
-
-                if (typeof chunkObj.text === 'string') {
-                    finalText = chunkObj.text;
-                } else if (typeof chunkObj.delta === 'string') {
-                    finalText += chunkObj.delta;
-                } else if (typeof chunkObj.content === 'string') {
-                    finalText = chunkObj.content;
-                }
-
-                if (chunkObj.error) {
-                    const errorMsg = typeof chunkObj.error === 'string'
-                        ? chunkObj.error
-                        : JSON.stringify(chunkObj.error);
-                    throw new Error(errorMsg);
-                }
-            }
-        }
-
-        // Cleanup generator
-        if (generator) {
-            try {
-                await generator.return(undefined);
-            } catch {
-                // Ignore cleanup errors
-            }
-        }
-
-        if (signal?.aborted) {
-            throw new DOMException('Aborted', 'AbortError');
-        }
-
-    } catch (err) {
-        if ((err as Error).name === 'AbortError') {
-            // Cleanup generator on abort
-            if (generator) {
-                try {
-                    await generator.return(undefined);
-                } catch {
-                    // Ignore cleanup errors
-                }
-            }
-            throw err;
-        }
-
-        logError('Stream consumption error', {
-            error: err,
-            textSoFar: finalText.length,
-        });
-
-        if (generator) {
-            try {
-                await generator.return(undefined);
-            } catch {
-                // Ignore errors during cleanup
-            }
-        }
-
-        if (finalText) {
-            debugLog('info', 'Returning partial response after stream error', {
-                length: finalText.length,
-            });
-            return finalText;
-        }
-
-        throw err;
-    }
-
-    debugLog('info', 'Stream consumed', { finalLength: finalText.length });
-    return finalText;
-}
-
-
 // ============================================================================
 // TOKEN ESTIMATION
 // ============================================================================
 
 /**
- * Get accurate token count for a stage
+ * Get token count for a stage prompt
  */
 export async function getStageTokenCount(
     state: PipelineState,
     stage: StageName,
 ): Promise<{ promptTokens: number; contextSize: number; percentage: number } | null> {
-    const { getTokenCountAsync, maxContext } = SillyTavern.getContext();
+    const ctx = SillyTavern.getContext();
 
     if (!state.character) return null;
 
-    if (typeof getTokenCountAsync !== 'function') {
+    if (typeof ctx.getTokenCountAsync !== 'function') {
         debugLog('info', 'getTokenCountAsync not available', null);
         return null;
     }
@@ -728,8 +813,12 @@ export async function getStageTokenCount(
 
         const systemPrompt = getFullSystemPrompt(stage);
         const fullPrompt = systemPrompt + '\n\n' + prompt;
-        const promptTokens = await getTokenCountAsync(fullPrompt);
-        const contextSize = maxContext || 8192;
+        const promptTokens = await ctx.getTokenCountAsync(fullPrompt);
+
+        // Get context size from current status
+        const status = getApiStatus();
+        const contextSize = status.contextSize;
+
         const percentage = Math.round((promptTokens / contextSize) * 100);
 
         return {
@@ -749,11 +838,11 @@ export async function getStageTokenCount(
 export async function getRefinementTokenCount(
     state: PipelineState,
 ): Promise<{ promptTokens: number; contextSize: number; percentage: number } | null> {
-    const { getTokenCountAsync, maxContext } = SillyTavern.getContext();
+    const ctx = SillyTavern.getContext();
 
     if (!state.character || !state.results.rewrite || !state.results.analyze) return null;
 
-    if (typeof getTokenCountAsync !== 'function') {
+    if (typeof ctx.getTokenCountAsync !== 'function') {
         debugLog('info', 'getTokenCountAsync not available', null);
         return null;
     }
@@ -764,8 +853,11 @@ export async function getRefinementTokenCount(
 
         const systemPrompt = getFullSystemPrompt('rewrite');
         const fullPrompt = systemPrompt + '\n\n' + prompt;
-        const promptTokens = await getTokenCountAsync(fullPrompt);
-        const contextSize = maxContext || 8192;
+        const promptTokens = await ctx.getTokenCountAsync(fullPrompt);
+
+        const status = getApiStatus();
+        const contextSize = status.contextSize;
+
         const percentage = Math.round((promptTokens / contextSize) * 100);
 
         return {

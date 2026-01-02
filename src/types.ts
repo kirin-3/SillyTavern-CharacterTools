@@ -111,18 +111,53 @@ export interface PopulatedField {
 // GENERATION
 // ============================================================================
 
-export interface GenerationConfig {
-    source: string;
-    model: string;
-    temperature: number;
-    maxTokens: number;
-    frequencyPenalty: number;
-    presencePenalty: number;
-    topP: number;
+/**
+ * Generation settings - simplified to use ST's connection profiles
+ */
+export interface GenerationSettings {
+    /** 'current' = use generateRaw with ST's active settings, 'profile' = use specific connection profile */
+    mode: 'current' | 'profile';
+    /** Connection profile UUID when mode === 'profile' */
+    profileId: string | null;
+    /** Override max tokens if set, otherwise use profile/preset default */
+    maxTokensOverride: number | null;
 }
 
+/**
+ * Information about an available connection profile
+ */
+export interface ProfileInfo {
+    id: string;
+    name: string;
+    model: string;
+    api: string;
+    mode: 'cc' | 'tc';
+    presetName: string;
+    isSupported: boolean;
+    validationError: string | null;
+}
+
+/**
+ * Current API status for display
+ */
+export interface ApiStatusInfo {
+    mode: 'current' | 'profile';
+    displayName: string;
+    source: string;
+    model: string;
+    modelDisplay: string;
+    apiType: 'cc' | 'tc';
+    contextSize: number;
+    isReady: boolean;
+    statusText: string;
+    error: string | null;
+}
+
+/**
+ * Result from a generation attempt
+ */
 export type GenerationResult =
-    | { success: true; response: string; isStructured: boolean }
+    | { success: true; response: string; reasoning?: string; isStructured: boolean }
     | { success: false; error: string };
 
 // ============================================================================
@@ -138,16 +173,16 @@ export interface StructuredOutputSchema {
 export interface JsonSchemaValue {
     $schema?: string;
     type: string;
-    properties?: Record<string, JsonSchemaValue>;  // CHANGED: was Record<string, unknown>
+    properties?: Record<string, JsonSchemaValue>;
     required?: string[];
     additionalProperties?: boolean;
-    items?: JsonSchemaValue | JsonSchemaValue[];   // CHANGED: was unknown
-    prefixItems?: JsonSchemaValue[];               // NEW: JSON Schema 2020-12
+    items?: JsonSchemaValue | JsonSchemaValue[];
+    prefixItems?: JsonSchemaValue[];
     $defs?: Record<string, JsonSchemaValue>;
     definitions?: Record<string, JsonSchemaValue>;
-    anyOf?: JsonSchemaValue[];                     // CHANGED: was unknown[]
-    allOf?: JsonSchemaValue[];                     // CHANGED: was unknown[]
-    oneOf?: JsonSchemaValue[];                     // NEW: (unsupported but should be in type)
+    anyOf?: JsonSchemaValue[];
+    allOf?: JsonSchemaValue[];
+    oneOf?: JsonSchemaValue[];
     enum?: unknown[];
     const?: unknown;
     format?: string;
@@ -156,21 +191,17 @@ export interface JsonSchemaValue {
     title?: string;
     default?: unknown;
     $ref?: string;
-    // Array constraints
     minItems?: number;
-    maxItems?: number;                             // NEW
-    uniqueItems?: boolean;                         // NEW
-    contains?: JsonSchemaValue;                    // NEW
-    // Numeric constraints (ignored but should be typed)
-    minimum?: number;                              // NEW
-    maximum?: number;                              // NEW
-    exclusiveMinimum?: number;                     // NEW
-    exclusiveMaximum?: number;                     // NEW
-    multipleOf?: number;                           // NEW
-    // String constraints (ignored but should be typed)
-    minLength?: number;                            // NEW
-    maxLength?: number;                            // NEW
-    // Index signature for other properties
+    maxItems?: number;
+    uniqueItems?: boolean;
+    contains?: JsonSchemaValue;
+    minimum?: number;
+    maximum?: number;
+    exclusiveMinimum?: number;
+    exclusiveMaximum?: number;
+    multipleOf?: number;
+    minLength?: number;
+    maxLength?: number;
     [key: string]: unknown;
 }
 
@@ -250,6 +281,7 @@ export interface IterationSnapshot {
 
 export interface StageResult {
     response: string;
+    reasoning?: string;  // NEW: reasoning/thinking content if available
     isStructured: boolean;
     promptUsed: string;
     schemaUsed: StructuredOutputSchema | null;
@@ -298,9 +330,8 @@ export interface PipelineState {
 // ============================================================================
 
 export interface Settings {
-    // Generation settings
-    useCurrentSettings: boolean;
-    generationConfig: GenerationConfig;
+    // Generation settings (simplified)
+    generationSettings: GenerationSettings;
 
     // Split system prompt (base + user additions)
     baseSystemPrompt: string;
@@ -397,31 +428,31 @@ export interface ResultsPanelProps {
 // ============================================================================
 
 export interface PersistedSession {
-  id: string;
-  label: string;
-  createdAt: number;
-  updatedAt: number;
+    id: string;
+    label: string;
+    createdAt: number;
+    updatedAt: number;
 
-  // Serialized pipeline state
-  results: {
-    score: StageResult | null;
-    rewrite: StageResult | null;
-    analyze: StageResult | null;
-  };
-  configs: Record<StageName, StageConfig>;
-  selectedStages: StageName[];
-  stageStatus: Record<StageName, StageStatus>;
-  iterationCount: number;
-  iterationHistory: IterationSnapshot[];
-  selectedFields: FieldSelection;
+    // Serialized pipeline state
+    results: {
+        score: StageResult | null;
+        rewrite: StageResult | null;
+        analyze: StageResult | null;
+    };
+    configs: Record<StageName, StageConfig>;
+    selectedStages: StageName[];
+    stageStatus: Record<StageName, StageStatus>;
+    iterationCount: number;
+    iterationHistory: IterationSnapshot[];
+    selectedFields: FieldSelection;
 }
 
 export interface CharacterSessionData {
-  version: number;
-  characterName: string;
-  characterAvatar: string;
-  sessions: PersistedSession[];
-  activeSessionId: string | null;
+    version: number;
+    characterName: string;
+    characterAvatar: string;
+    sessions: PersistedSession[];
+    activeSessionId: string | null;
 }
 
 /**
@@ -438,4 +469,14 @@ export interface TemplateContext {
     currentAnalysis?: string;
     iterationNumber?: string;
     charName?: string;
+}
+
+// ============================================================================
+// CHAT MESSAGE TYPE (for CMRS compatibility)
+// ============================================================================
+
+export interface ChatCompletionMessage {
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    name?: string;
 }

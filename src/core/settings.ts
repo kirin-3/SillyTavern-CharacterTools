@@ -1,9 +1,13 @@
-// src/settings.ts
+// src/core/settings.ts
+//
+// Settings management with migrations.
+// Handles persistence, presets, and configuration.
+
 import {
     MODULE_NAME,
     DEFAULT_SETTINGS,
     BASE_SYSTEM_PROMPT,
-    DEFAULT_GENERATION_CONFIG,
+    DEFAULT_GENERATION_SETTINGS,
     DEFAULT_STAGE_DEFAULTS,
     BASE_REFINEMENT_PROMPT,
     BUILTIN_PROMPT_PRESETS,
@@ -14,7 +18,7 @@ import {
 } from '../constants';
 import type {
     Settings,
-    GenerationConfig,
+    GenerationSettings,
     StageName,
     StageDefaults,
     PromptPreset,
@@ -35,7 +39,7 @@ const migrations: Record<number, MigrationFn> = {
     2: (settings) => {
         const oldSettings = settings as Record<string, unknown>;
         if (oldSettings.useRawMode !== undefined) {
-            settings.useCurrentSettings = !oldSettings.useRawMode;
+            // This was an old toggle - now we use generationSettings.mode
             delete oldSettings.useRawMode;
         }
 
@@ -103,6 +107,30 @@ const migrations: Record<number, MigrationFn> = {
             }
         }
     },
+
+    // v4 -> v5: Migrate generationConfig to generationSettings
+    5: (settings) => {
+        const oldSettings = settings as Record<string, unknown>;
+
+        // Remove old useCurrentSettings and generationConfig
+        if (oldSettings.useCurrentSettings !== undefined) {
+            delete oldSettings.useCurrentSettings;
+        }
+
+        if (oldSettings.generationConfig !== undefined) {
+            // Old config is gone - we now use profiles
+            delete oldSettings.generationConfig;
+        }
+
+        // Initialize new generationSettings
+        if (!settings.generationSettings) {
+            settings.generationSettings = structuredClone(DEFAULT_GENERATION_SETTINGS);
+        }
+
+        debugLog('info', 'Migrated to generationSettings', {
+            generationSettings: settings.generationSettings,
+        });
+    },
 };
 
 /**
@@ -150,8 +178,7 @@ export function getSettings(): Settings {
         runMigrations(existing, oldVersion);
         existing.settingsVersion = SETTINGS_VERSION;
 
-        // FIXED: Don't use lodash.merge - it merges arrays by index and corrupts presets!
-        // Instead, manually merge with proper array handling
+        // Merge with proper array handling
         const merged = mergeSettingsWithDefaults(existing);
 
         // Ensure builtin presets exist (adds missing, updates outdated)
@@ -175,6 +202,12 @@ export function getSettings(): Settings {
         settings.schemaPresets = [];
     }
 
+    // Ensure generationSettings exists
+    if (!settings.generationSettings) {
+        settings.generationSettings = structuredClone(DEFAULT_GENERATION_SETTINGS);
+        saveSettingsDebounced();
+    }
+
     // Check if builtins need updating (rare - only when we add new builtins)
     const builtinsAdded = ensureBuiltinPresets(settings);
     if (builtinsAdded) {
@@ -194,9 +227,6 @@ function mergeSettingsWithDefaults(existing: Partial<Settings>): Settings {
     const merged: Settings = structuredClone(DEFAULT_SETTINGS);
 
     // Shallow-merge scalar properties (existing takes priority)
-    if (existing.useCurrentSettings !== undefined) {
-        merged.useCurrentSettings = existing.useCurrentSettings;
-    }
     if (existing.baseSystemPrompt !== undefined) {
         merged.baseSystemPrompt = existing.baseSystemPrompt;
     }
@@ -217,10 +247,10 @@ function mergeSettingsWithDefaults(existing: Partial<Settings>): Settings {
     }
 
     // Deep-merge nested objects (NOT arrays)
-    if (existing.generationConfig) {
-        merged.generationConfig = {
-            ...DEFAULT_GENERATION_CONFIG,
-            ...existing.generationConfig,
+    if (existing.generationSettings) {
+        merged.generationSettings = {
+            ...DEFAULT_GENERATION_SETTINGS,
+            ...existing.generationSettings,
         };
     }
 
@@ -247,7 +277,6 @@ function mergeSettingsWithDefaults(existing: Partial<Settings>): Settings {
     }
 
     // CRITICAL: Preset arrays are REPLACED, not merged by index
-    // We preserve the user's entire array, then ensureBuiltinPresets adds any missing builtins
     if (existing.promptPresets && Array.isArray(existing.promptPresets)) {
         merged.promptPresets = [...existing.promptPresets];
     }
@@ -304,12 +333,10 @@ function ensureBuiltinPresets(settings: Settings): boolean {
         const existingIndex = settings.promptPresets.findIndex(p => p.id === builtin.id);
 
         if (existingIndex === -1) {
-            // New preset - add it
             settings.promptPresets.push(structuredClone(builtin));
             modified = true;
             debugLog('info', 'Added new builtin prompt preset', { id: builtin.id });
         } else if (settings.promptPresets[existingIndex].isBuiltin) {
-            // Existing builtin - check version and update if newer
             const existing = settings.promptPresets[existingIndex];
             if ((existing.presetVersion ?? 0) < builtin.presetVersion) {
                 settings.promptPresets[existingIndex] = structuredClone(builtin);
@@ -321,7 +348,6 @@ function ensureBuiltinPresets(settings: Settings): boolean {
                 });
             }
         }
-        // If it exists but isBuiltin is false, user converted it to custom - don't touch
     }
 
     // Update or add builtin schema presets
@@ -329,12 +355,10 @@ function ensureBuiltinPresets(settings: Settings): boolean {
         const existingIndex = settings.schemaPresets.findIndex(p => p.id === builtin.id);
 
         if (existingIndex === -1) {
-            // New preset - add it
             settings.schemaPresets.push(structuredClone(builtin));
             modified = true;
             debugLog('info', 'Added new builtin schema preset', { id: builtin.id });
         } else if (settings.schemaPresets[existingIndex].isBuiltin) {
-            // Existing builtin - check version and update if newer
             const existing = settings.schemaPresets[existingIndex];
             if ((existing.presetVersion ?? 0) < builtin.presetVersion) {
                 settings.schemaPresets[existingIndex] = structuredClone(builtin);
@@ -346,7 +370,6 @@ function ensureBuiltinPresets(settings: Settings): boolean {
                 });
             }
         }
-        // If it exists but isBuiltin is false, user converted it to custom - don't touch
     }
 
     return modified;
@@ -367,20 +390,48 @@ export function updateSetting<K extends keyof Settings>(key: K, value: Settings[
     debugLog('info', 'Setting updated', { key, value: typeof value === 'object' ? '[object]' : value });
 }
 
+// ============================================================================
+// GENERATION SETTINGS
+// ============================================================================
+
 /**
- * Update generation config (partial update)
+ * Update generation settings (partial update)
  */
-export function updateGenerationConfig(updates: Partial<GenerationConfig>): void {
+export function updateGenerationSettings(updates: Partial<GenerationSettings>): void {
     const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
     const settings = extensionSettings[MODULE_NAME] as Settings;
 
-    if (!settings.generationConfig) {
-        settings.generationConfig = structuredClone(DEFAULT_GENERATION_CONFIG);
+    if (!settings.generationSettings) {
+        settings.generationSettings = structuredClone(DEFAULT_GENERATION_SETTINGS);
     }
 
-    settings.generationConfig = { ...settings.generationConfig, ...updates };
+    settings.generationSettings = { ...settings.generationSettings, ...updates };
     saveSettingsDebounced();
-    debugLog('info', 'Generation config updated', updates);
+    debugLog('info', 'Generation settings updated', updates);
+}
+
+/**
+ * Set generation mode
+ */
+export function setGenerationMode(mode: 'current' | 'profile'): void {
+    updateGenerationSettings({ mode });
+}
+
+/**
+ * Set generation profile
+ */
+export function setGenerationProfile(profileId: string | null): void {
+    updateGenerationSettings({
+        mode: profileId ? 'profile' : 'current',
+        profileId,
+    });
+}
+
+/**
+ * Set max tokens override
+ */
+export function setMaxTokensOverride(maxTokens: number | null): void {
+    updateGenerationSettings({ maxTokensOverride: maxTokens });
 }
 
 // ============================================================================

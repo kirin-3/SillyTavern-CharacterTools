@@ -1,17 +1,17 @@
 // src/ui/settings-modal.ts
 //
-// Settings modal popup
+// Settings modal popup - now with connection profile support
 
 import {
     MODULE_NAME,
     BASE_SYSTEM_PROMPT,
     BASE_REFINEMENT_PROMPT,
     VERSION,
+    DEFAULT_MAX_TOKENS,
 } from '../constants';
 import {
     getSettings,
-    updateSetting,
-    updateGenerationConfig,
+    updateGenerationSettings,
     updateUserSystemPrompt,
     updateBaseSystemPrompt,
     updateStageSystemPrompt,
@@ -29,45 +29,29 @@ import {
     exportCustomPresets,
     importPresets,
 } from '../core/settings';
-import { debugLog, getDebugLogs, clearDebugLogs, formatLogEntry, formatLogData, exportDebugInfo } from '../debug';
-import type { GenerationConfig } from '../types';
-
+import {
+    getAvailableProfiles,
+    getApiStatus,
+} from '../core/generator';
+import {
+    debugLog,
+    getDebugLogs,
+    clearDebugLogs,
+    formatLogEntry,
+    formatLogData,
+    exportDebugInfo,
+    generateDebugReport,
+} from '../debug';
+import type { ProfileInfo, ApiStatusInfo } from '../types';
 
 // ============================================================================
-// HELPER: Source to DOM Select ID Mapping
+// CLIPBOARD HELPERS
 // ============================================================================
-
-/**
- * Gets the DOM select element ID for a source's model dropdown.
- * Most follow `model_${source}_select`, but some are special.
- */
-function getModelSelectIdForSource(source: string): string {
-    // Special cases where the select ID doesn't follow standard pattern
-    if (source === 'makersuite') {
-        return 'model_google_select';  // Uses Google's model select
-    }
-    if (source === 'azure_openai') {
-        return 'azure_openai_model';   // Non-standard ID format
-    }
-    return `model_${source}_select`;
-}
-
-/**
- * Gets the model settings key for a source (mirrors generator.ts logic)
- */
-function getModelKeyForSource(source: string): string {
-    if (source === 'makersuite') {
-        return 'google_model';
-    }
-    return `${source}_model`;
-}
 
 /**
  * Copy text to clipboard with fallback for non-secure contexts.
- * Returns true on success, false on failure.
  */
 async function copyToClipboard(text: string): Promise<boolean> {
-    // Modern API (secure contexts only)
     if (navigator.clipboard?.writeText) {
         try {
             await navigator.clipboard.writeText(text);
@@ -96,7 +80,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
 
 /**
  * Read text from clipboard. Only works in secure contexts.
- * Returns null if unavailable or denied.
  */
 async function readFromClipboard(): Promise<string | null> {
     if (!navigator.clipboard?.readText) {
@@ -108,8 +91,6 @@ async function readFromClipboard(): Promise<string | null> {
         return null;
     }
 }
-
-
 
 // ============================================================================
 // MAIN ENTRY
@@ -141,7 +122,6 @@ export async function openSettingsModal(onClose?: () => void): Promise<void> {
     await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     initSettingsListeners();
-    refreshModelSelects();
 
     debugLog('info', 'Settings modal opened', null);
 }
@@ -152,7 +132,9 @@ export async function openSettingsModal(onClose?: () => void): Promise<void> {
 
 function buildSettingsContent(): string {
     const settings = getSettings();
-    const config = settings.generationConfig;
+    const genSettings = settings.generationSettings;
+    const profiles = getAvailableProfiles();
+    const apiStatus = getApiStatus();
     const { moment } = SillyTavern.libs;
 
     return `
@@ -173,57 +155,62 @@ function buildSettingsContent(): string {
               <span>Generation</span>
             </div>
 
-            <div class="${MODULE_NAME}_settings_row">
-              <label class="checkbox_label">
-                <input
-                  type="checkbox"
-                  id="${MODULE_NAME}_use_current_settings"
-                  ${settings.useCurrentSettings ? 'checked' : ''}
-                >
-                <span>Use Current SillyTavern Settings</span>
-              </label>
+            <!-- API Status Banner -->
+            ${renderApiStatusBanner(apiStatus)}
+
+            <!-- Profile Selection -->
+            <div class="${MODULE_NAME}_profile_selector">
+              ${renderProfileOption('current', 'Use Current Settings',
+        'Uses whatever API is configured in SillyTavern right now',
+        genSettings.mode === 'current', true)}
+
+              ${profiles.length > 0 ? `
+                <div class="${MODULE_NAME}_profile_divider">
+                  <span>Connection Profiles</span>
+                </div>
+                ${profiles.map(p => renderProfileOptionFromInfo(p, genSettings.mode === 'profile' && genSettings.profileId === p.id)).join('')}
+              ` : `
+                <div class="${MODULE_NAME}_profile_empty">
+                  <i class="fa-solid fa-info-circle"></i>
+                  <span>No connection profiles found. Create one in SillyTavern's Connection Manager to use a specific API configuration.</span>
+                </div>
+              `}
             </div>
 
-            <div id="${MODULE_NAME}_custom_gen_config" class="${settings.useCurrentSettings ? 'hidden' : ''}">
-              <p class="${MODULE_NAME}_settings_hint">
-                <i class="fa-solid fa-circle-info"></i>
-                Models load from SillyTavern's dropdowns. If a source shows limited models,
-                connect to it in ST's <strong>Connection Manager</strong> first, then return here.
-              </p>
-              <div class="${MODULE_NAME}_settings_grid">
-                <div class="${MODULE_NAME}_settings_field">
-                  <label>Source</label>
-                  <select id="${MODULE_NAME}_gen_source" class="text_pole"></select>
+            <!-- Max Tokens Override -->
+            <details class="${MODULE_NAME}_settings_advanced">
+              <summary>
+                <i class="fa-solid fa-caret-right"></i>
+                Response Length Override
+              </summary>
+              <div class="${MODULE_NAME}_settings_advanced_content">
+                <div class="${MODULE_NAME}_settings_row">
+                  <label class="checkbox_label">
+                    <input
+                      type="checkbox"
+                      id="${MODULE_NAME}_use_max_tokens_override"
+                      ${genSettings.maxTokensOverride !== null ? 'checked' : ''}
+                    >
+                    <span>Override max response tokens</span>
+                  </label>
                 </div>
                 <div class="${MODULE_NAME}_settings_field">
-                  <label>Model</label>
-                  <select id="${MODULE_NAME}_gen_model" class="text_pole"></select>
-                </div>
-              </div>
-
-              <div class="${MODULE_NAME}_settings_grid ${MODULE_NAME}_settings_grid_5">
-                <div class="${MODULE_NAME}_settings_field">
-                  <label>Temp</label>
-                  <input type="number" id="${MODULE_NAME}_gen_temp" class="text_pole" value="${config.temperature}" min="0" max="2" step="0.1">
-                </div>
-                <div class="${MODULE_NAME}_settings_field">
-                  <label>Max Tokens</label>
-                  <input type="number" id="${MODULE_NAME}_gen_tokens" class="text_pole" value="${config.maxTokens}" min="100" max="32000" step="100">
-                </div>
-                <div class="${MODULE_NAME}_settings_field">
-                  <label>Freq Pen</label>
-                  <input type="number" id="${MODULE_NAME}_gen_freq" class="text_pole" value="${config.frequencyPenalty}" min="-2" max="2" step="0.1">
-                </div>
-                <div class="${MODULE_NAME}_settings_field">
-                  <label>Pres Pen</label>
-                  <input type="number" id="${MODULE_NAME}_gen_pres" class="text_pole" value="${config.presencePenalty}" min="-2" max="2" step="0.1">
-                </div>
-                <div class="${MODULE_NAME}_settings_field">
-                  <label>Top P</label>
-                  <input type="number" id="${MODULE_NAME}_gen_top_p" class="text_pole" value="${config.topP}" min="0" max="1" step="0.05">
+                  <input
+                    type="number"
+                    id="${MODULE_NAME}_max_tokens_override"
+                    class="text_pole"
+                    value="${genSettings.maxTokensOverride ?? DEFAULT_MAX_TOKENS}"
+                    min="100"
+                    max="32000"
+                    step="100"
+                    ${genSettings.maxTokensOverride === null ? 'disabled' : ''}
+                  >
+                  <span class="${MODULE_NAME}_settings_hint">
+                    Leave unchecked to use the profile's preset settings (recommended)
+                  </span>
                 </div>
               </div>
-            </div>
+            </details>
           </div>
 
           <!-- System Prompt -->
@@ -419,6 +406,10 @@ function buildSettingsContent(): string {
                 <i class="fa-solid fa-copy"></i>
                 <span>Copy Info</span>
               </button>
+              <button id="${MODULE_NAME}_copy_debug_report" class="menu_button">
+                <i class="fa-solid fa-file-medical"></i>
+                <span>Bug Report</span>
+              </button>
             </div>
 
             <div id="${MODULE_NAME}_debug_log_viewer" class="${MODULE_NAME}_debug_log_viewer hidden">
@@ -438,6 +429,98 @@ function buildSettingsContent(): string {
   `;
 }
 
+// ============================================================================
+// RENDER HELPERS
+// ============================================================================
+
+function renderApiStatusBanner(status: ApiStatusInfo): string {
+    const isReady = status.isReady;
+    const statusClass = isReady ? 'ready' : 'error';
+    const icon = isReady ? 'fa-circle-check' : 'fa-circle-xmark';
+
+    return `
+    <div class="${MODULE_NAME}_api_banner ${statusClass}">
+      <div class="${MODULE_NAME}_api_banner_left">
+        <i class="fa-solid ${icon}"></i>
+        <span class="${MODULE_NAME}_api_banner_name">${escapeHtml(status.displayName)}</span>
+        <span class="${MODULE_NAME}_api_type_badge ${status.apiType}">${status.apiType === 'cc' ? 'Chat' : 'Text'}</span>
+      </div>
+      <div class="${MODULE_NAME}_api_banner_right">
+        <span class="${MODULE_NAME}_api_model" title="${escapeHtml(status.model)}">${escapeHtml(status.modelDisplay)}</span>
+        <span class="${MODULE_NAME}_api_context">${status.contextSize.toLocaleString()} ctx</span>
+      </div>
+    </div>
+    ${status.error ? `
+      <div class="${MODULE_NAME}_api_error">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span>${escapeHtml(status.error)}</span>
+      </div>
+    ` : ''}
+  `;
+}
+
+function renderProfileOption(
+    id: string,
+    title: string,
+    description: string,
+    isSelected: boolean,
+    isSupported: boolean,
+    extraInfo?: string,
+): string {
+    return `
+    <div class="${MODULE_NAME}_profile_option ${isSelected ? 'selected' : ''} ${!isSupported ? 'disabled' : ''}"
+         data-mode="${id === 'current' ? 'current' : 'profile'}"
+         data-profile-id="${id}"
+         ${!isSupported ? 'title="This profile is not properly configured"' : ''}>
+      <i class="fa-solid ${isSelected ? 'fa-circle-dot' : 'fa-circle'}"></i>
+      <div class="${MODULE_NAME}_profile_option_content">
+        <div class="${MODULE_NAME}_profile_option_header">
+          <span class="${MODULE_NAME}_profile_option_title">${escapeHtml(title)}</span>
+          ${!isSupported ? '<i class="fa-solid fa-triangle-exclamation warning"></i>' : ''}
+        </div>
+        <span class="${MODULE_NAME}_profile_option_desc">${escapeHtml(description)}</span>
+        ${extraInfo ? `<span class="${MODULE_NAME}_profile_option_extra">${escapeHtml(extraInfo)}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderProfileOptionFromInfo(profile: ProfileInfo, isSelected: boolean): string {
+    const description = `${profile.api} • ${truncateModel(profile.model)}`;
+    const extraInfo = profile.presetName ? `Preset: ${profile.presetName}` : undefined;
+
+    return `
+    <div class="${MODULE_NAME}_profile_option ${isSelected ? 'selected' : ''} ${!profile.isSupported ? 'disabled' : ''}"
+         data-mode="profile"
+         data-profile-id="${profile.id}"
+         ${!profile.isSupported ? `title="${profile.validationError || 'Invalid configuration'}"` : ''}>
+      <i class="fa-solid ${isSelected ? 'fa-circle-dot' : 'fa-circle'}"></i>
+      <div class="${MODULE_NAME}_profile_option_content">
+        <div class="${MODULE_NAME}_profile_option_header">
+          <span class="${MODULE_NAME}_profile_option_title">${escapeHtml(profile.name)}</span>
+          <span class="${MODULE_NAME}_api_type_badge ${profile.mode}">${profile.mode === 'cc' ? 'Chat' : 'Text'}</span>
+          ${!profile.isSupported ? '<i class="fa-solid fa-triangle-exclamation warning"></i>' : ''}
+        </div>
+        <span class="${MODULE_NAME}_profile_option_desc">${escapeHtml(description)}</span>
+        ${extraInfo ? `<span class="${MODULE_NAME}_profile_option_extra">${escapeHtml(extraInfo)}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function truncateModel(model: string): string {
+    const stripped = model
+        .replace(/^anthropic\//, '')
+        .replace(/^openai\//, '')
+        .replace(/^google\//, '')
+        .replace(/^meta-llama\//, 'llama-')
+        .replace(/^mistralai\//, 'mistral-');
+
+    if (stripped.length > 30) {
+        return stripped.substring(0, 27) + '...';
+    }
+    return stripped;
+}
 
 function renderPresetList(type: 'prompt' | 'schema'): string {
     const presets = type === 'prompt' ? getPromptPresets() : getSchemaPresets();
@@ -469,49 +552,76 @@ function initSettingsListeners(): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
     if (!modal) return;
 
-    // ========== GENERATION CONFIG ==========
+    // ========== PROFILE SELECTION ==========
 
-    // Use current settings toggle
-    const useCurrentCheckbox = modal.querySelector(`#${MODULE_NAME}_use_current_settings`) as HTMLInputElement;
-    const customConfig = modal.querySelector(`#${MODULE_NAME}_custom_gen_config`);
+    modal.querySelectorAll(`.${MODULE_NAME}_profile_option`).forEach(el => {
+        el.addEventListener('click', () => {
+            const element = el as HTMLElement;
 
-    useCurrentCheckbox?.addEventListener('change', () => {
-        updateSetting('useCurrentSettings', useCurrentCheckbox.checked);
-        customConfig?.classList.toggle('hidden', useCurrentCheckbox.checked);
-    });
-
-    // Generation config inputs
-    const genSource = modal.querySelector(`#${MODULE_NAME}_gen_source`) as HTMLSelectElement;
-    const genModel = modal.querySelector(`#${MODULE_NAME}_gen_model`) as HTMLSelectElement;
-    const genTemp = modal.querySelector(`#${MODULE_NAME}_gen_temp`) as HTMLInputElement;
-    const genTokens = modal.querySelector(`#${MODULE_NAME}_gen_tokens`) as HTMLInputElement;
-    const genFreq = modal.querySelector(`#${MODULE_NAME}_gen_freq`) as HTMLInputElement;
-    const genPres = modal.querySelector(`#${MODULE_NAME}_gen_pres`) as HTMLInputElement;
-    const genTopP = modal.querySelector(`#${MODULE_NAME}_gen_top_p`) as HTMLInputElement;
-
-    genSource?.addEventListener('change', () => {
-        updateGenerationConfig({ source: genSource.value });
-        populateModelSelect(genSource.value);
-    });
-
-    genModel?.addEventListener('change', () => {
-        updateGenerationConfig({ model: genModel.value });
-    });
-
-    const handleNumberInput = (input: HTMLInputElement, key: keyof GenerationConfig, isInt = false) => {
-        input?.addEventListener('change', () => {
-            const val = isInt ? parseInt(input.value, 10) : parseFloat(input.value);
-            if (!isNaN(val)) {
-                updateGenerationConfig({ [key]: val });
+            // Don't allow selecting disabled profiles
+            if (element.classList.contains('disabled')) {
+                toastr.warning('This profile is not properly configured. Check Connection Manager.');
+                return;
             }
-        });
-    };
 
-    handleNumberInput(genTemp, 'temperature');
-    handleNumberInput(genTokens, 'maxTokens', true);
-    handleNumberInput(genFreq, 'frequencyPenalty');
-    handleNumberInput(genPres, 'presencePenalty');
-    handleNumberInput(genTopP, 'topP');
+            const mode = element.dataset.mode as 'current' | 'profile';
+            const profileId = element.dataset.profileId;
+
+            if (mode === 'current') {
+                updateGenerationSettings({ mode: 'current', profileId: null });
+            } else if (profileId) {
+                updateGenerationSettings({ mode: 'profile', profileId });
+            }
+
+            // Update UI
+            modal.querySelectorAll(`.${MODULE_NAME}_profile_option`).forEach(opt => {
+                opt.classList.remove('selected');
+                const icon = opt.querySelector('i.fa-solid');
+                if (icon) {
+                    icon.classList.remove('fa-circle-dot');
+                    icon.classList.add('fa-circle');
+                }
+            });
+
+            element.classList.add('selected');
+            const icon = element.querySelector('i.fa-solid');
+            if (icon) {
+                icon.classList.remove('fa-circle');
+                icon.classList.add('fa-circle-dot');
+            }
+
+            // Refresh the status banner
+            refreshApiStatusBanner();
+
+            toastr.success(`Generation mode: ${mode === 'current' ? 'Current Settings' : 'Connection Profile'}`);
+        });
+    });
+
+    // ========== MAX TOKENS OVERRIDE ==========
+
+    const useMaxTokensOverride = modal.querySelector(`#${MODULE_NAME}_use_max_tokens_override`) as HTMLInputElement;
+    const maxTokensInput = modal.querySelector(`#${MODULE_NAME}_max_tokens_override`) as HTMLInputElement;
+
+    useMaxTokensOverride?.addEventListener('change', () => {
+        const enabled = useMaxTokensOverride.checked;
+        maxTokensInput.disabled = !enabled;
+
+        if (enabled) {
+            const value = parseInt(maxTokensInput.value, 10);
+            updateGenerationSettings({ maxTokensOverride: isNaN(value) ? DEFAULT_MAX_TOKENS : value });
+        } else {
+            updateGenerationSettings({ maxTokensOverride: null });
+        }
+    });
+
+    maxTokensInput?.addEventListener('change', () => {
+        if (!useMaxTokensOverride.checked) return;
+
+        const value = parseInt(maxTokensInput.value, 10);
+        if (!isNaN(value) && value >= 100 && value <= 32000) {
+            updateGenerationSettings({ maxTokensOverride: value });
+        }
+    });
 
     // ========== USER SYSTEM PROMPT ==========
 
@@ -632,13 +742,15 @@ function initSettingsListeners(): void {
         const json = await readFromClipboard();
         if (json === null) {
         // Clipboard read not available - show input dialog instead
-            const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+            const { Popup } = SillyTavern.getContext();
             const input = await Popup.show.input(
                 'Import Presets',
                 'Paste your preset JSON here:',
                 '',
             );
-            if (input === null || input === POPUP_RESULT.CANCELLED || !input.trim()) {
+            // Popup.show.input returns string | null
+            // null = cancelled, empty string = user submitted nothing
+            if (!input || !input.trim()) {
                 return;
             }
             const result = importPresets(input);
@@ -660,12 +772,14 @@ function initSettingsListeners(): void {
         }
     });
 
+
     // ========== DEBUG ==========
 
     const debugModeCheckbox = modal.querySelector(`#${MODULE_NAME}_debug_mode`) as HTMLInputElement;
     const viewLogsBtn = modal.querySelector(`#${MODULE_NAME}_view_logs`);
     const clearLogsBtn = modal.querySelector(`#${MODULE_NAME}_clear_logs`);
     const copyDebugBtn = modal.querySelector(`#${MODULE_NAME}_copy_debug_info`);
+    const copyDebugReportBtn = modal.querySelector(`#${MODULE_NAME}_copy_debug_report`);
     const logViewer = modal.querySelector(`#${MODULE_NAME}_debug_log_viewer`);
 
     debugModeCheckbox?.addEventListener('change', () => {
@@ -689,11 +803,53 @@ function initSettingsListeners(): void {
     copyDebugBtn?.addEventListener('click', async () => {
         const success = await copyToClipboard(exportDebugInfo());
         if (success) {
-            toastr.success('Debug info copied to clipboard');
+            toastr.success('Debug info (JSON) copied to clipboard');
         } else {
             toastr.error('Failed to copy. Try HTTPS or localhost.');
         }
     });
+
+    copyDebugReportBtn?.addEventListener('click', async () => {
+        const success = await copyToClipboard(generateDebugReport());
+        if (success) {
+            toastr.success('Bug report copied to clipboard');
+        } else {
+            toastr.error('Failed to copy. Try HTTPS or localhost.');
+        }
+    });
+}
+
+// ============================================================================
+// REFRESH FUNCTIONS
+// ============================================================================
+
+function refreshApiStatusBanner(): void {
+    const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
+    if (!modal) return;
+
+    const status = getApiStatus();
+    const bannerContainer = modal.querySelector(`.${MODULE_NAME}_api_banner`)?.parentElement;
+
+    if (bannerContainer) {
+        // Find and remove existing banner and error
+        const existingBanner = bannerContainer.querySelector(`.${MODULE_NAME}_api_banner`);
+        const existingError = bannerContainer.querySelector(`.${MODULE_NAME}_api_error`);
+        existingBanner?.remove();
+        existingError?.remove();
+
+        // Insert new banner at the start
+        const newBannerHtml = renderApiStatusBanner(status);
+        const temp = document.createElement('div');
+        temp.innerHTML = newBannerHtml;
+
+        // Insert before profile selector
+        const profileSelector = bannerContainer.querySelector(`.${MODULE_NAME}_profile_selector`);
+        if (profileSelector) {
+            while (temp.firstChild) {
+                bannerContainer.insertBefore(temp.firstChild, profileSelector);
+            }
+        }
+    }
 }
 
 function handleDeletePreset(type: 'prompt' | 'schema', id: string): void {
@@ -751,94 +907,6 @@ function refreshDebugLogs(): void {
             }
         });
     });
-}
-
-// ============================================================================
-// MODEL SELECTS
-// ============================================================================
-
-function refreshModelSelects(): void {
-    const settings = getSettings();
-    populateSourceSelect(settings.generationConfig.source);
-    populateModelSelect(settings.generationConfig.source, settings.generationConfig.model);
-}
-
-function populateSourceSelect(currentSource: string): void {
-    const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
-    const sourceSelect = modal?.querySelector(`#${MODULE_NAME}_gen_source`) as HTMLSelectElement;
-    if (!sourceSelect) return;
-
-    sourceSelect.innerHTML = '';
-
-    // Read available sources from ST's source dropdown
-    const stSourceSelect = document.getElementById('chat_completion_source') as HTMLSelectElement;
-
-    if (stSourceSelect) {
-        Array.from(stSourceSelect.options).forEach((opt: HTMLOptionElement) => {
-            if (opt.value) {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.textContent || opt.value;
-                sourceSelect.appendChild(option);
-            }
-        });
-    }
-
-    // Fallback if ST dropdown not found (shouldn't happen)
-    if (sourceSelect.options.length === 0) {
-        const fallbackSources = ['openai', 'openrouter', 'claude', 'google', 'groq'];
-        fallbackSources.forEach(src => {
-            const option = document.createElement('option');
-            option.value = src;
-            option.textContent = src;
-            sourceSelect.appendChild(option);
-        });
-    }
-
-    sourceSelect.value = currentSource;
-}
-
-function populateModelSelect(source: string, currentModel?: string): void {
-    const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
-    const modelSelect = modal?.querySelector(`#${MODULE_NAME}_gen_model`) as HTMLSelectElement;
-    if (!modelSelect) return;
-
-    modelSelect.innerHTML = '';
-
-    // Get the correct ST select element for this source
-    const stSelectId = getModelSelectIdForSource(source);
-    const stSelect = document.getElementById(stSelectId) as HTMLSelectElement;
-
-    if (stSelect?.options.length) {
-        Array.from(stSelect.options).forEach((opt: HTMLOptionElement) => {
-            if (opt.value) {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.textContent || opt.value;
-                modelSelect.appendChild(option);
-            }
-        });
-    }
-
-    // If no options from DOM, try to get from settings as fallback
-    if (modelSelect.options.length === 0) {
-        const ccs = SillyTavern.getContext().chatCompletionSettings || {};
-        const modelKey = getModelKeyForSource(source);
-        const settingsModel = ccs[modelKey] || currentModel || '';
-
-        const option = document.createElement('option');
-        option.value = settingsModel;
-        option.textContent = settingsModel || `No models available for ${source}`;
-        modelSelect.appendChild(option);
-    }
-
-    // Set current value
-    if (currentModel && Array.from(modelSelect.options).some(o => o.value === currentModel)) {
-        modelSelect.value = currentModel;
-    } else if (modelSelect.options.length) {
-        modelSelect.value = modelSelect.options[0].value;
-        updateGenerationConfig({ model: modelSelect.options[0].value });
-    }
 }
 
 // ============================================================================
