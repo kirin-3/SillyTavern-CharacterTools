@@ -578,7 +578,8 @@ function initStageConfigEvents(container: HTMLElement): void {
 // ============================================================================
 
 function initResultsEvents(container: HTMLElement): void {
-    const resultsSection = container.querySelector(`#${MODULE_NAME}_results_container`);
+    // Attach to the SECTION wrapper, not the container that gets innerHTML replaced
+    const resultsSection = container.querySelector(`#${MODULE_NAME}_results_section`);
     if (!resultsSection) return;
 
     resultsSection.addEventListener('click', async (e) => {
@@ -647,6 +648,7 @@ function initResultsEvents(container: HTMLElement): void {
         }
     });
 }
+
 
 // ============================================================================
 // ITERATION HISTORY EVENTS
