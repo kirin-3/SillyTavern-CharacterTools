@@ -576,13 +576,9 @@ function initSettingsListeners(): void {
             // Show/hide profile section
             profileSection?.classList.toggle('hidden', mode === 'current');
 
-            // Update settings
-            if (mode === 'current') {
-                updateGenerationSettings({ mode: 'current', profileId: null });
-            } else {
-                const settings = getSettings();
-                updateGenerationSettings({ mode: 'profile', profileId: settings.generationSettings.profileId });
-            }
+            // Update settings - DON'T clear profileId when switching to current
+            // This preserves the selection for when they switch back
+            updateGenerationSettings({ mode });
 
             refreshApiStatusBanner();
         });
