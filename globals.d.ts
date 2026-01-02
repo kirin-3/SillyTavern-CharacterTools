@@ -225,7 +225,7 @@ interface ChatCompletionSettings {
     freq_pen_openai: number;
     pres_pen_openai: number;
     repetition_penalty_openai: number;
-
+    reasoning_effort?: string;  // 'low', 'medium', 'high', or '' to disable
     // Per-provider model settings
     openai_model: string;
     claude_model: string;

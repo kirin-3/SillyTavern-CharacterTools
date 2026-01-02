@@ -596,6 +596,19 @@ async function generateWithCurrent(
         };
     }
 
+    // If using structured output, temporarily disable reasoning/thinking
+    // Claude API doesn't allow thinking + tool_choice (structured output uses tool_choice)
+    const ccs = ctx.chatCompletionSettings;
+    let originalReasoningEffort: string | undefined;
+
+    if (options.jsonSchema && ccs?.reasoning_effort) {
+        originalReasoningEffort = ccs.reasoning_effort;
+        ccs.reasoning_effort = '';
+        debugLog('info', 'Disabled reasoning_effort for structured output', {
+            original: originalReasoningEffort,
+        });
+    }
+
     // Set up abort handler
     let abortHandler: (() => void) | null = null;
     if (options.signal && typeof ctx.stopGeneration === 'function') {
@@ -617,6 +630,7 @@ async function generateWithCurrent(
             systemPromptLength: systemPrompt.length,
             userPromptLength: prompt.length,
             maxTokens: options.maxTokens,
+            reasoningDisabled: !!originalReasoningEffort,
         });
 
         const response = await ctx.generateRaw({
@@ -657,6 +671,12 @@ async function generateWithCurrent(
             options.signal.removeEventListener('abort', abortHandler);
         }
         return handleGenerationError(err);
+    } finally {
+        // Restore reasoning_effort if we disabled it
+        if (originalReasoningEffort !== undefined && ccs) {
+            ccs.reasoning_effort = originalReasoningEffort;
+            debugLog('info', 'Restored reasoning_effort', { value: originalReasoningEffort });
+        }
     }
 }
 
@@ -678,7 +698,6 @@ async function generateWithProfile(
         };
     }
 
-    // Validate profile exists
     const profile = getProfile(profileId);
     if (!profile) {
         return {
@@ -687,7 +706,6 @@ async function generateWithProfile(
         };
     }
 
-    // Validate profile is supported
     if (!CMRS.isProfileSupported(profile)) {
         return {
             success: false,
@@ -712,8 +730,12 @@ async function generateWithProfile(
 
         // Build payload overrides
         const overridePayload: Record<string, unknown> = {};
+
         if (options.jsonSchema) {
             overridePayload.json_schema = options.jsonSchema;
+            // Disable reasoning when using structured output - Claude doesn't allow both
+            overridePayload.reasoning_effort = '';
+            debugLog('info', 'Disabled reasoning_effort in payload for structured output', null);
         }
 
         const result = await CMRS.sendRequest(
