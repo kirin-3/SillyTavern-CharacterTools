@@ -46,6 +46,34 @@ import {
 import type { ProfileInfo, ApiStatusInfo } from '../types';
 
 // ============================================================================
+// DEBOUNCE HELPER
+// ============================================================================
+
+const SETTINGS_DEBOUNCE_MS = 500;
+
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function debounce<T extends (...args: never[]) => void>(key: string, fn: T, delay: number = SETTINGS_DEBOUNCE_MS): T {
+    return ((...args: Parameters<T>) => {
+        const existing = debounceTimers.get(key);
+        if (existing) {
+            clearTimeout(existing);
+        }
+        debounceTimers.set(key, setTimeout(() => {
+            debounceTimers.delete(key);
+            fn(...args);
+        }, delay));
+    }) as T;
+}
+
+function clearAllDebounceTimers(): void {
+    for (const timer of debounceTimers.values()) {
+        clearTimeout(timer);
+    }
+    debounceTimers.clear();
+}
+
+// ============================================================================
 // CLIPBOARD HELPERS
 // ============================================================================
 
@@ -105,6 +133,9 @@ export async function openSettingsModal(onClose?: () => void): Promise<void> {
     });
 
     popup.show().then(() => {
+        // Flush any pending debounced saves before closing
+        flushPendingSettings();
+        clearAllDebounceTimers();
         onClose?.();
         debugLog('info', 'Settings modal closed', null);
     });
@@ -115,6 +146,35 @@ export async function openSettingsModal(onClose?: () => void): Promise<void> {
     updatePromptTokenCounts();
 
     debugLog('info', 'Settings modal opened', null);
+}
+
+/**
+ * Flush all pending debounced settings updates immediately
+ */
+function flushPendingSettings(): void {
+    const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
+    if (!modal) return;
+
+    // Get current values and save them directly
+    const userSystemPrompt = modal.querySelector(`#${MODULE_NAME}_user_system_prompt`) as HTMLTextAreaElement;
+    const baseSystemPrompt = modal.querySelector(`#${MODULE_NAME}_base_system_prompt`) as HTMLTextAreaElement;
+    const userRefinementPrompt = modal.querySelector(`#${MODULE_NAME}_user_refinement_prompt`) as HTMLTextAreaElement;
+    const baseRefinementPrompt = modal.querySelector(`#${MODULE_NAME}_base_refinement_prompt`) as HTMLTextAreaElement;
+
+    const settings = getSettings();
+
+    if (userSystemPrompt && userSystemPrompt.value !== settings.userSystemPrompt) {
+        updateUserSystemPrompt(userSystemPrompt.value);
+    }
+    if (baseSystemPrompt && baseSystemPrompt.value !== settings.baseSystemPrompt) {
+        updateBaseSystemPrompt(baseSystemPrompt.value);
+    }
+    if (userRefinementPrompt && userRefinementPrompt.value !== settings.userRefinementPrompt) {
+        updateUserRefinementPrompt(userRefinementPrompt.value);
+    }
+    if (baseRefinementPrompt && baseRefinementPrompt.value !== settings.baseRefinementPrompt) {
+        updateBaseRefinementPrompt(baseRefinementPrompt.value);
+    }
 }
 
 // ============================================================================
@@ -600,7 +660,7 @@ function updateSingleTokenCount(elementId: string, text: string): void {
         return;
     }
 
-    // Use debounced countTokens
+    // Use debounced countTokens (debounce is built into countTokens)
     countTokens(text, (tokens) => {
         if (tokens !== null) {
             el.textContent = `${tokens.toLocaleString()} tokens`;
@@ -617,6 +677,23 @@ function updateSingleTokenCount(elementId: string, text: string): void {
 function initSettingsListeners(): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
     if (!modal) return;
+
+    // Create debounced update functions for each textarea
+    const debouncedUpdateUserSystemPrompt = debounce('userSystemPrompt', (value: string) => {
+        updateUserSystemPrompt(value);
+    });
+
+    const debouncedUpdateBaseSystemPrompt = debounce('baseSystemPrompt', (value: string) => {
+        updateBaseSystemPrompt(value);
+    });
+
+    const debouncedUpdateUserRefinementPrompt = debounce('userRefinementPrompt', (value: string) => {
+        updateUserRefinementPrompt(value);
+    });
+
+    const debouncedUpdateBaseRefinementPrompt = debounce('baseRefinementPrompt', (value: string) => {
+        updateBaseRefinementPrompt(value);
+    });
 
     // ========== MODE TOGGLE ==========
     const modeOptions = modal.querySelectorAll(`.${MODULE_NAME}_gen_mode_option`);
@@ -704,7 +781,7 @@ function initSettingsListeners(): void {
     const clearUserSystemPromptBtn = modal.querySelector(`#${MODULE_NAME}_clear_user_system_prompt`);
 
     userSystemPromptTextarea?.addEventListener('input', () => {
-        updateUserSystemPrompt(userSystemPromptTextarea.value);
+        debouncedUpdateUserSystemPrompt(userSystemPromptTextarea.value);
         updateSingleTokenCount(`${MODULE_NAME}_user_system_prompt_tokens`, userSystemPromptTextarea.value);
     });
 
@@ -720,7 +797,7 @@ function initSettingsListeners(): void {
     const resetBaseSystemPromptBtn = modal.querySelector(`#${MODULE_NAME}_reset_base_system_prompt`);
 
     baseSystemPromptTextarea?.addEventListener('input', () => {
-        updateBaseSystemPrompt(baseSystemPromptTextarea.value);
+        debouncedUpdateBaseSystemPrompt(baseSystemPromptTextarea.value);
         updateSingleTokenCount(`${MODULE_NAME}_base_system_prompt_tokens`, baseSystemPromptTextarea.value);
     });
 
@@ -734,9 +811,14 @@ function initSettingsListeners(): void {
     // ========== STAGE SYSTEM PROMPTS ==========
     for (const stage of ['score', 'rewrite', 'analyze'] as const) {
         const textarea = modal.querySelector(`#${MODULE_NAME}_stage_system_prompt_${stage}`) as HTMLTextAreaElement;
-        textarea?.addEventListener('input', () => {
-            updateStageSystemPrompt(stage, textarea.value);
-        });
+        if (textarea) {
+            const debouncedUpdate = debounce(`stageSystemPrompt_${stage}`, (value: string) => {
+                updateStageSystemPrompt(stage, value);
+            });
+            textarea.addEventListener('input', () => {
+                debouncedUpdate(textarea.value);
+            });
+        }
     }
 
     // ========== USER REFINEMENT PROMPT ==========
@@ -744,7 +826,7 @@ function initSettingsListeners(): void {
     const clearUserRefinementPromptBtn = modal.querySelector(`#${MODULE_NAME}_clear_user_refinement_prompt`);
 
     userRefinementPromptTextarea?.addEventListener('input', () => {
-        updateUserRefinementPrompt(userRefinementPromptTextarea.value);
+        debouncedUpdateUserRefinementPrompt(userRefinementPromptTextarea.value);
         updateSingleTokenCount(`${MODULE_NAME}_user_refinement_prompt_tokens`, userRefinementPromptTextarea.value);
     });
 
@@ -760,7 +842,7 @@ function initSettingsListeners(): void {
     const resetBaseRefinementPromptBtn = modal.querySelector(`#${MODULE_NAME}_reset_base_refinement_prompt`);
 
     baseRefinementPromptTextarea?.addEventListener('input', () => {
-        updateBaseRefinementPrompt(baseRefinementPromptTextarea.value);
+        debouncedUpdateBaseRefinementPrompt(baseRefinementPromptTextarea.value);
         updateSingleTokenCount(`${MODULE_NAME}_base_refinement_prompt_tokens`, baseRefinementPromptTextarea.value);
     });
 
