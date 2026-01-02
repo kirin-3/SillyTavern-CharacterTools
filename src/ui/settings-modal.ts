@@ -562,11 +562,19 @@ function initSettingsListeners(): void {
     const profileSection = modal.querySelector(`#${MODULE_NAME}_profile_section`);
 
     modeOptions.forEach(option => {
-        option.addEventListener('click', () => {
+        option.addEventListener('click', (e) => {
             const element = option as HTMLElement;
             const mode = element.dataset.mode as 'current' | 'profile';
-            const radio = element.querySelector('input[type="radio"]') as HTMLInputElement;
 
+            // Don't do anything if clicking the already-active option
+            if (element.classList.contains('active')) {
+                return;
+            }
+
+            // Prevent double-firing from label + input
+            e.stopPropagation();
+
+            const radio = element.querySelector('input[type="radio"]') as HTMLInputElement;
             if (radio) radio.checked = true;
 
             // Update active states
@@ -576,8 +584,7 @@ function initSettingsListeners(): void {
             // Show/hide profile section
             profileSection?.classList.toggle('hidden', mode === 'current');
 
-            // Update settings - DON'T clear profileId when switching to current
-            // This preserves the selection for when they switch back
+            // Update settings
             updateGenerationSettings({ mode });
 
             refreshApiStatusBanner();
