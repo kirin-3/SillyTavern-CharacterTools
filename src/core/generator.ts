@@ -18,7 +18,7 @@ import type {
     ChatCompletionMessage,
 } from '../types';
 import type { TokenEstimate } from './tokens';
-import { buildStagePrompt, buildRefinementPrompt, getStageSchema } from './pipeline';
+import { buildStagePrompt, getStageSchema } from './pipeline';
 
 // ============================================================================
 // TYPES
@@ -420,7 +420,9 @@ export function getSamplerSettings(): Record<string, number | string | boolean> 
 // ============================================================================
 
 /**
- * Run generation for a pipeline stage
+ * Run generation for a pipeline stage.
+ * Handles both normal stage runs and refinement iterations.
+ * When stage is 'rewrite' and state.isRefining is true, builds refinement prompt.
  */
 export async function runStageGeneration(
     state: PipelineState,
@@ -445,18 +447,27 @@ export async function runStageGeneration(
         };
     }
 
+    // buildStagePrompt handles refinement mode internally when stage === 'rewrite' && state.isRefining
     const userPrompt = buildStagePrompt(state, stage);
     if (!userPrompt) {
         return { success: false, error: 'No prompt configured for this stage' };
     }
 
     const config = state.configs[stage];
-    const jsonSchema = config.useStructuredOutput ? getStageSchema(state, stage) : null;
+
+    // No structured output during refinement - we want freeform rewrite
+    const useStructured = config.useStructuredOutput && !state.isRefining;
+    const jsonSchema = useStructured ? getStageSchema(state, stage) : null;
+
     const systemPrompt = getFullSystemPrompt(stage);
 
     const apiStatus = getApiStatus();
+    const isRefinement = stage === 'rewrite' && state.isRefining;
+
     debugLog('info', 'Starting stage generation', {
         stage,
+        isRefinement,
+        iteration: isRefinement ? state.iterationCount + 1 : 0,
         character: state.character.name,
         mode: settings.generationSettings.mode,
         useStructured: !!jsonSchema,
@@ -499,74 +510,6 @@ export async function runStageGeneration(
     }
 
     return result;
-}
-
-/**
- * Run refinement generation
- */
-export async function runRefinementGeneration(
-    state: PipelineState,
-    signal?: AbortSignal,
-): Promise<GenerationResult> {
-    if (signal?.aborted) {
-        return { success: false, error: 'Generation cancelled' };
-    }
-
-    if (!state.character) {
-        return { success: false, error: 'No character selected' };
-    }
-
-    if (!state.results.rewrite || !state.results.analyze) {
-        return { success: false, error: 'Refinement requires both rewrite and analyze results' };
-    }
-
-    const settings = getSettings();
-
-    if (!isApiReady()) {
-        const status = getApiStatus();
-        return {
-            success: false,
-            error: status.error || 'API is not ready. Check your connection settings.',
-        };
-    }
-
-    const userPrompt = buildRefinementPrompt(state);
-    if (!userPrompt) {
-        return { success: false, error: 'Failed to build refinement prompt' };
-    }
-
-    const systemPrompt = getFullSystemPrompt('rewrite');
-    const apiStatus = getApiStatus();
-
-    debugLog('info', 'Starting refinement generation', {
-        iteration: state.iterationCount + 1,
-        character: state.character.name,
-        promptLength: userPrompt.length,
-    });
-
-    const maxTokens = settings.generationSettings.maxTokensOverride ?? apiStatus.maxOutput;
-
-    if (settings.generationSettings.mode === 'current') {
-        return await generateWithCurrent(
-            userPrompt,
-            systemPrompt,
-            { maxTokens, signal },
-        );
-    } else {
-        const profileId = settings.generationSettings.profileId;
-        if (!profileId) {
-            return { success: false, error: 'No connection profile selected.' };
-        }
-
-        return await generateWithProfile(
-            profileId,
-            [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt },
-            ],
-            { maxTokens, signal },
-        );
-    }
 }
 
 // ============================================================================
@@ -910,7 +853,7 @@ function validateStructuredResponse(
 // ============================================================================
 
 /**
- * Get token count for a stage prompt
+ * Get token count for a stage prompt (handles refinement automatically)
  */
 export async function getStageTokenCount(
     state: PipelineState,
@@ -922,21 +865,6 @@ export async function getStageTokenCount(
     if (!prompt) return null;
 
     const systemPrompt = getFullSystemPrompt(stage);
-    return getPromptTokenEstimate(prompt, systemPrompt);
-}
-
-/**
- * Get token count for refinement prompt
- */
-export async function getRefinementTokenCount(
-    state: PipelineState,
-): Promise<TokenEstimate | null> {
-    if (!state.character || !state.results.rewrite || !state.results.analyze) return null;
-
-    const prompt = buildRefinementPrompt(state);
-    if (!prompt) return null;
-
-    const systemPrompt = getFullSystemPrompt('rewrite');
     return getPromptTokenEstimate(prompt, systemPrompt);
 }
 

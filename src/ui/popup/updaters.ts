@@ -3,7 +3,7 @@
 
 import { MODULE_NAME, STAGE_LABELS, STAGE_ICONS } from '../../constants';
 import { debugLog } from '../../debug';
-import { getApiInfo, isApiReady, getStageTokenCount, getRefinementTokenCount } from '../../core/generator';
+import { getApiInfo, isApiReady, getStageTokenCount } from '../../core/generator';
 import { getNextStage } from '../../core/pipeline';
 import { getSchemaPreset } from '../../core/settings';
 import { getSchemaValidationFromCache, getState, getElement } from './state';
@@ -257,12 +257,10 @@ export async function updateTokenEstimate(): Promise<void> {
     tokenEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
     tokenEl.className = `${MODULE_NAME}_token_estimate`;
 
-    let counts;
-    if (state.pipeline.isRefining && state.pipeline.results.rewrite && state.pipeline.results.analyze) {
-        counts = await getRefinementTokenCount(state.pipeline);
-    } else {
-        counts = await getStageTokenCount(state.pipeline, state.activeStageView);
-    }
+    // getStageTokenCount handles refinement mode automatically via buildStagePrompt
+    // When viewing rewrite stage and isRefining=true, it builds the refinement prompt
+    const stage = state.activeStageView;
+    const counts = await getStageTokenCount(state.pipeline, stage);
 
     // Re-check state after async
     if (!getState() || !getElement()) return;
@@ -273,7 +271,7 @@ export async function updateTokenEstimate(): Promise<void> {
         return;
     }
 
-    const isRewriteStage = state.activeStageView === 'rewrite';
+    const isRewriteStage = stage === 'rewrite';
     let colorClass = '';
     let warning = '';
 
@@ -298,6 +296,7 @@ export async function updateTokenEstimate(): Promise<void> {
 
     tokenEl.className = `${MODULE_NAME}_token_estimate ${colorClass}`;
 }
+
 
 
 export function updateSessionManager(): void {

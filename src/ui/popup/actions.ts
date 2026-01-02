@@ -60,7 +60,7 @@ import {
     createPipelineState,
     initializeFieldSelection,
 } from '../../core/pipeline';
-import { isApiReady, runStageGeneration, runRefinementGeneration, getTokenCount } from '../../core/generator';
+import { isApiReady, runStageGeneration, getTokenCount } from '../../core/generator';
 import {
     loadCharacterSessions,
     saveSession,
@@ -646,17 +646,14 @@ export async function runRefinement(): Promise<void> {
         toastr.warning(validation.warnings.join('\n'));
     }
 
-    const stateForGeneration = {
-        ...state.pipeline,
-        results: { ...state.pipeline.results },
-    };
-
+    // Snapshot current state before modifying
     const preRefinementState = {
         iterationCount: state.pipeline.iterationCount,
         iterationHistory: [...state.pipeline.iterationHistory],
         analyzeResult: state.pipeline.results.analyze,
     };
 
+    // Start refinement - this sets isRefining=true and increments iteration
     updatePipeline(p => startRefinement(p));
     updateState(() => ({ isRefining: true }));
     abortController = new AbortController();
@@ -670,8 +667,12 @@ export async function runRefinement(): Promise<void> {
     updateIterationHistory();
 
     try {
-        const result = await runRefinementGeneration(
-            stateForGeneration,
+        // Refinement is just a rewrite stage run when isRefining=true
+        // buildStagePrompt handles the refinement prompt internally
+        const currentState = getState()!;
+        const result = await runStageGeneration(
+            currentState.pipeline,
+            'rewrite',
             abortController.signal,
         );
 
@@ -681,6 +682,7 @@ export async function runRefinement(): Promise<void> {
         if (result.success) {
             updatePipeline(p => completeRefinement(p, {
                 response: result.response,
+                reasoning: result.reasoning,
                 isStructured: false,
                 promptUsed: '[Refinement prompt]',
                 schemaUsed: null,
@@ -691,6 +693,7 @@ export async function runRefinement(): Promise<void> {
 
             updateState(() => ({ activeStageView: 'rewrite' }));
         } else {
+            // Restore pre-refinement state on failure
             updatePipeline(p => ({
                 ...p,
                 iterationCount: preRefinementState.iterationCount,
@@ -713,6 +716,7 @@ export async function runRefinement(): Promise<void> {
     } catch (e) {
         const s = getState();
         if (s) {
+            // Restore pre-refinement state on error
             updatePipeline(p => ({
                 ...p,
                 iterationCount: preRefinementState.iterationCount,
@@ -735,6 +739,7 @@ export async function runRefinement(): Promise<void> {
         setTimeout(() => updateAllComponents(), 0);
     }
 }
+
 
 export function cancelGeneration(): void {
     if (abortController) {

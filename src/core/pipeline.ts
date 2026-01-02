@@ -1,4 +1,4 @@
-// src/pipeline.ts
+// src/core/pipeline.ts
 //
 // Pipeline state machine for managing the character analysis workflow.
 // Handles stage progression, state transitions, result management, and iteration.
@@ -688,13 +688,24 @@ export function acceptRewrite(state: PipelineState): PipelineState {
 
 /**
  * Build the complete prompt for a stage.
- * Always includes required data, with deduplication if user used placeholders.
+ * Handles both normal stage runs and refinement iterations.
+ * When stage is 'rewrite' and state.isRefining is true, builds refinement prompt.
  */
 export function buildStagePrompt(state: PipelineState, stage: StageName): string | null {
     if (!state.character) return null;
 
-    const config = state.configs[stage];
-    const userPrompt = resolvePrompt(config);
+    // Refinement is just a rewrite with different prompt source and extra context
+    const isRefinement = stage === 'rewrite' && state.isRefining && state.results.rewrite && state.results.analyze;
+
+    // Get the user prompt - either from stage config or refinement instructions
+    let userPrompt: string;
+    if (isRefinement) {
+        userPrompt = getFullRefinementInstructions();
+    } else {
+        const config = state.configs[stage];
+        userPrompt = resolvePrompt(config);
+    }
+
     if (!userPrompt.trim()) return null;
 
     // Check which placeholders user included
@@ -707,7 +718,6 @@ export function buildStagePrompt(state: PipelineState, stage: StageName): string
     );
 
     // Build context for placeholder substitution
-    // NOTE: No userName - we don't replace {{user}}
     const context = {
         originalCharacter: characterSummary,
         scoreResults: state.results.score?.response || '',
@@ -724,26 +734,50 @@ export function buildStagePrompt(state: PipelineState, stage: StageName): string
     // Build data sections, SKIPPING what user already included via placeholders
     const dataSections: string[] = [];
 
-    // Character data (always needed for all stages)
-    if (!usedPlaceholders.includes('ORIGINAL_CHARACTER')) {
-        dataSections.push(`## Character\n\n${characterSummary}`);
-    }
-
-    // Score results (for rewrite and analyze stages)
-    if (stage !== 'score' && state.results.score?.response) {
-        if (!usedPlaceholders.includes('SCORE_RESULTS')) {
-            dataSections.push(`## Score Feedback\n\n${state.results.score.response}`);
+    if (isRefinement) {
+        // Refinement needs: original character, current rewrite, analysis, optionally score
+        if (!usedPlaceholders.includes('ORIGINAL_CHARACTER')) {
+            dataSections.push(`## Original Character (Ground Truth)\n\n${characterSummary}`);
         }
-    }
 
-    // Rewrite results (for analyze stage)
-    if (stage === 'analyze' && state.results.rewrite?.response) {
         const hasRewritePlaceholder =
-            usedPlaceholders.includes('REWRITE_RESULTS') ||
-            usedPlaceholders.includes('CURRENT_REWRITE');
+            usedPlaceholders.includes('CURRENT_REWRITE') ||
+            usedPlaceholders.includes('REWRITE_RESULTS');
 
         if (!hasRewritePlaceholder) {
-            dataSections.push(`## Rewritten Version\n\n${state.results.rewrite.response}`);
+            dataSections.push(`## Current Rewrite (Iteration ${state.iterationCount + 1})\n\n${state.results.rewrite!.response}`);
+        }
+
+        if (!usedPlaceholders.includes('CURRENT_ANALYSIS')) {
+            dataSections.push(`## Analysis of Current Rewrite\n\n${state.results.analyze!.response}`);
+        }
+
+        if (state.results.score?.response && !usedPlaceholders.includes('SCORE_RESULTS')) {
+            dataSections.push(`## Original Score Feedback\n\n${state.results.score.response}`);
+        }
+    } else {
+        // Normal stage execution
+        // Character data (always needed for all stages)
+        if (!usedPlaceholders.includes('ORIGINAL_CHARACTER')) {
+            dataSections.push(`## Character\n\n${characterSummary}`);
+        }
+
+        // Score results (for rewrite and analyze stages)
+        if (stage !== 'score' && state.results.score?.response) {
+            if (!usedPlaceholders.includes('SCORE_RESULTS')) {
+                dataSections.push(`## Score Feedback\n\n${state.results.score.response}`);
+            }
+        }
+
+        // Rewrite results (for analyze stage)
+        if (stage === 'analyze' && state.results.rewrite?.response) {
+            const hasRewritePlaceholder =
+                usedPlaceholders.includes('REWRITE_RESULTS') ||
+                usedPlaceholders.includes('CURRENT_REWRITE');
+
+            if (!hasRewritePlaceholder) {
+                dataSections.push(`## Rewritten Version\n\n${state.results.rewrite.response}`);
+            }
         }
     }
 
@@ -756,79 +790,12 @@ export function buildStagePrompt(state: PipelineState, stage: StageName): string
         parts.push('\n\n---\n');
     }
 
-    parts.push('# Instructions\n\n');
-    parts.push(processedUserPrompt);
-
-    return parts.join('');
-}
-
-/**
- * Build the refinement prompt with deduplication.
- */
-export function buildRefinementPrompt(state: PipelineState): string | null {
-    if (!state.character || !state.results.rewrite || !state.results.analyze) {
-        return null;
+    // Use appropriate header for refinement vs normal
+    if (isRefinement) {
+        parts.push('# Refinement Instructions\n\n');
+    } else {
+        parts.push('# Instructions\n\n');
     }
-
-    // Get refinement instructions (base + user)
-    const userPrompt = getFullRefinementInstructions();
-
-    // Check which placeholders user included
-    const usedPlaceholders = promptHasPlaceholders(userPrompt);
-
-    // Build character summary from selected fields
-    const characterSummary = buildCharacterSummaryFromSelection(
-        state.character,
-        state.selectedFields,
-    );
-
-    // NOTE: No userName - we don't replace {{user}}
-    const context = {
-        originalCharacter: characterSummary,
-        scoreResults: state.results.score?.response || '',
-        rewriteResults: state.results.rewrite.response,
-        currentRewrite: state.results.rewrite.response,
-        currentAnalysis: state.results.analyze.response,
-        iterationNumber: String(state.iterationCount + 1),
-        charName: state.character.name,
-    };
-
-    // Substitute placeholders
-    const processedUserPrompt = processPromptTemplate(userPrompt, context);
-
-    // Build data sections with deduplication
-    const dataSections: string[] = [];
-
-    if (!usedPlaceholders.includes('ORIGINAL_CHARACTER')) {
-        dataSections.push(`## Original Character (Ground Truth)\n\n${characterSummary}`);
-    }
-
-    const hasRewritePlaceholder =
-        usedPlaceholders.includes('CURRENT_REWRITE') ||
-        usedPlaceholders.includes('REWRITE_RESULTS');
-
-    if (!hasRewritePlaceholder) {
-        dataSections.push(`## Current Rewrite (Iteration ${state.iterationCount + 1})\n\n${state.results.rewrite.response}`);
-    }
-
-    if (!usedPlaceholders.includes('CURRENT_ANALYSIS')) {
-        dataSections.push(`## Analysis of Current Rewrite\n\n${state.results.analyze.response}`);
-    }
-
-    if (state.results.score?.response && !usedPlaceholders.includes('SCORE_RESULTS')) {
-        dataSections.push(`## Original Score Feedback\n\n${state.results.score.response}`);
-    }
-
-    // Assemble
-    const parts: string[] = [];
-
-    if (dataSections.length > 0) {
-        parts.push('# Input Data\n');
-        parts.push(dataSections.join('\n\n---\n\n'));
-        parts.push('\n\n---\n');
-    }
-
-    parts.push('# Refinement Instructions\n\n');
     parts.push(processedUserPrompt);
 
     return parts.join('');
