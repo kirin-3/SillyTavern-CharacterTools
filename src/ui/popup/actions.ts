@@ -621,8 +621,17 @@ export async function runAllStages(): Promise<void> {
 }
 
 export async function runRefinement(): Promise<void> {
+    debugLog('info', 'runRefinement CALLED', null);  // ADD THIS
     const state = getState();
     const el = getElement();
+
+    debugLog('info', 'runRefinement state check', {  // ADD THIS
+        hasState: !!state,
+        hasEl: !!el,
+        isGenerating: state?.isGenerating,
+        isRefining: state?.isRefining,
+    });
+
     if (!state || !el || state.isGenerating || state.isRefining) return;
 
     if (!isApiReady()) {
