@@ -12,23 +12,6 @@ import type { TokenEstimate } from './tokens';
 // ============================================================================
 
 /**
- * Fields that can exist at both top-level AND in data.*
- * Maps field key to top-level property name
- */
-const TOP_LEVEL_FALLBACKS: Record<string, string> = {
-    system_prompt: 'system_prompt',
-    post_history_instructions: 'post_history_instructions',
-    creator_notes: 'creator_notes',
-};
-
-/**
- * Legacy field name mappings (old field name -> current field key)
- */
-const LEGACY_FIELD_NAMES: Record<string, string> = {
-    creator_notes: 'creatorcomment',
-};
-
-/**
  * Get a value from a character using a dot-notation path.
  * Supports paths like 'data.system_prompt' or 'data.extensions.depth_prompt'
  */
@@ -60,21 +43,26 @@ function isPopulatedValue(value: unknown, type: CharacterField['type']): boolean
 
         case 'object':
             if (typeof value !== 'object') return false;
-            // For depth_prompt, check if prompt has content
             if ('prompt' in value && typeof (value as DepthPrompt).prompt === 'string') {
                 return (value as DepthPrompt).prompt.trim().length > 0;
             }
-            // For character_book, check if entries exist
             if ('entries' in value && Array.isArray((value as CharacterBook).entries)) {
                 return (value as CharacterBook).entries.length > 0;
             }
-            // Generic object - has any keys
             return Object.keys(value).length > 0;
 
         case 'string':
         default:
             return typeof value === 'string' && value.trim().length > 0;
     }
+}
+
+/**
+ * Get field value from character. Single path lookup, no fallbacks needed.
+ */
+function getFieldValue(char: Character, field: CharacterField): unknown {
+    const value = getValueByPath(char, field.path);
+    return isPopulatedValue(value, field.type || 'string') ? value : undefined;
 }
 
 /**
@@ -86,7 +74,6 @@ function formatFieldValue(value: unknown, field: CharacterField): string {
     switch (type) {
         case 'array':
             if (!Array.isArray(value)) return '';
-            // Format as numbered list
             return value
                 .map((item, i) => `${i + 1}. ${String(item).trim()}`)
                 .join('\n');
@@ -118,13 +105,9 @@ function formatObjectField(value: unknown, key: string): string {
             if (!book.entries?.length) return '';
 
             const lines: string[] = [];
-            if (book.name) {
-                lines.push(`Lorebook: ${book.name}`);
-            }
-            lines.push(`Entries: ${book.entries.length}`);
-            lines.push('');
+            if (book.name) lines.push(`Lorebook: ${book.name}`);
+            lines.push(`Entries: ${book.entries.length}`, '');
 
-            // List entries with keywords
             for (const entry of book.entries) {
                 const status = entry.enabled ? '✓' : '✗';
                 const keys = entry.keys.slice(0, 5).join(', ');
@@ -132,7 +115,6 @@ function formatObjectField(value: unknown, key: string): string {
                 const comment = entry.comment || `Entry ${entry.id}`;
                 lines.push(`${status} ${comment}: [${keys}${keysSuffix}]`);
 
-                // Include content preview (first 100 chars)
                 if (entry.content) {
                     const preview = entry.content.trim().substring(0, 100);
                     const suffix = entry.content.length > 100 ? '...' : '';
@@ -144,58 +126,12 @@ function formatObjectField(value: unknown, key: string): string {
         }
 
         default:
-            // Generic object - JSON stringify
             try {
                 return JSON.stringify(value, null, 2);
             } catch {
                 return '[Complex Object]';
             }
     }
-}
-
-/**
- * Try to get a field value, checking multiple possible locations.
- * Order: primary path -> top-level fallback -> legacy field name
- */
-function getFieldValue(char: Character, field: CharacterField): unknown {
-    const type = field.type || 'string';
-    const charRecord = char as unknown as Record<string, unknown>;
-
-    // 1. Try the primary path (e.g., 'data.system_prompt')
-    let value = getValueByPath(char, field.path);
-    if (isPopulatedValue(value, type)) {
-        return value;
-    }
-
-    // 2. For top-level simple paths, also try direct property access
-    //    (handles case where path is 'description' and we access char.description)
-    if (!field.path.includes('.')) {
-        value = charRecord[field.key];
-        if (isPopulatedValue(value, type)) {
-            return value;
-        }
-    }
-
-    // 3. Check top-level fallback for fields that can exist at both levels
-    //    (e.g., system_prompt can be at char.system_prompt OR char.data.system_prompt)
-    const topLevelKey = TOP_LEVEL_FALLBACKS[field.key];
-    if (topLevelKey) {
-        value = charRecord[topLevelKey];
-        if (isPopulatedValue(value, type)) {
-            return value;
-        }
-    }
-
-    // 4. Check legacy field names (e.g., creatorcomment -> creator_notes)
-    const legacyKey = LEGACY_FIELD_NAMES[field.key];
-    if (legacyKey) {
-        value = charRecord[legacyKey];
-        if (isPopulatedValue(value, type)) {
-            return value;
-        }
-    }
-
-    return undefined;
 }
 
 // ============================================================================
@@ -206,16 +142,13 @@ function getFieldValue(char: Character, field: CharacterField): unknown {
  * Get all populated fields from a character
  */
 export function getPopulatedFields(char: Character): PopulatedField[] {
-    if (!char) return [];
+    if (!char?.data) return [];
 
     const populated: PopulatedField[] = [];
 
     for (const field of CHARACTER_FIELDS) {
         const value = getFieldValue(char, field);
-
-        if (value === undefined) {
-            continue;
-        }
+        if (value === undefined) continue;
 
         const formatted = formatFieldValue(value, field);
         if (!formatted) continue;
@@ -297,84 +230,6 @@ export async function getFieldTokenCounts(char: Character): Promise<Map<string, 
 }
 
 // ============================================================================
-// DIAGNOSTICS
-// ============================================================================
-
-/**
- * Check if a character appears to be "shallow" (missing data.* fields).
- * Useful for debugging when unshallowCharacter wasn't called.
- */
-export function isShallowCharacter(char: Character): boolean {
-    if (!char) return true;
-
-    // Shallow characters typically have name/avatar but no data object
-    // or an empty/minimal data object
-    if (!char.data) return true;
-
-    // Check for typical V2 fields that should be in data
-    const hasV2Data = !!(
-        char.data.description ||
-        char.data.personality ||
-        char.data.first_mes ||
-        char.data.system_prompt
-    );
-
-    return !hasV2Data;
-}
-
-/**
- * Get diagnostic info about character data structure.
- * Useful for debugging field extraction issues.
- */
-export function getCharacterDiagnostics(char: Character): {
-    hasData: boolean;
-    isShallow: boolean;
-    topLevelFields: string[];
-    dataFields: string[];
-    extensionFields: string[];
-} {
-    if (!char) {
-        return {
-            hasData: false,
-            isShallow: true,
-            topLevelFields: [],
-            dataFields: [],
-            extensionFields: [],
-        };
-    }
-
-    const charRecord = char as unknown as Record<string, unknown>;
-
-    const topLevelFields = Object.keys(charRecord).filter(k => {
-        const val = charRecord[k];
-        return val !== undefined && val !== null && val !== '' &&
-               typeof val !== 'object';
-    });
-
-    const dataFields = char.data
-        ? Object.keys(char.data).filter(k => {
-            const val = (char.data as Record<string, unknown>)[k];
-            return val !== undefined && val !== null && val !== '';
-        })
-        : [];
-
-    const extensionFields = char.data?.extensions
-        ? Object.keys(char.data.extensions).filter(k => {
-            const val = (char.data!.extensions as Record<string, unknown>)[k];
-            return val !== undefined && val !== null;
-        })
-        : [];
-
-    return {
-        hasData: !!char.data,
-        isShallow: isShallowCharacter(char),
-        topLevelFields,
-        dataFields,
-        extensionFields,
-    };
-}
-
-// ============================================================================
 // FORMATTING
 // ============================================================================
 
@@ -389,7 +244,7 @@ export function buildCharacterSummary(char: Character): string {
 
 /**
  * Build character summary using only selected fields.
- * Sanitizes placeholders to prevent ST substitution.
+ * Replaces {{char}} placeholders with actual name.
  */
 export function buildCharacterSummaryFromSelection(
     char: Character,
@@ -400,7 +255,6 @@ export function buildCharacterSummaryFromSelection(
 
     for (const field of allFields) {
         const selected = selection[field.key];
-
         if (!selected) continue;
         if (Array.isArray(selected) && selected.length === 0) continue;
 
@@ -419,15 +273,10 @@ export function buildCharacterSummaryFromSelection(
         }
     }
 
-    let result: string;
-    if (sections.length === 0) {
-        result = `# CHARACTER: ${char.name}\n\n(No fields selected)`;
-    } else {
-        result = `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
-    }
+    const result = sections.length === 0
+        ? `# CHARACTER: ${char.name}\n\n(No fields selected)`
+        : `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
 
-    // CRITICAL: Replace placeholders with actual name
-    // This prevents ST's substituteParams from replacing with active chat character
     return result
         .replace(/\{\{char\}\}/gi, char.name)
         .replace(/\{\{charName\}\}/gi, char.name);
@@ -444,11 +293,8 @@ export function buildCompactSummary(char: Character): string {
 /**
  * Get a preview of a field value (truncated)
  */
-export function getFieldPreview(value: string, maxLength: number = 100): string {
-    if (value.length <= maxLength) {
-        return value;
-    }
-    return value.substring(0, maxLength - 3) + '...';
+export function getFieldPreview(value: string, maxLength = 100): string {
+    return value.length <= maxLength ? value : value.substring(0, maxLength - 3) + '...';
 }
 
 // ============================================================================
@@ -459,8 +305,7 @@ export function getFieldPreview(value: string, maxLength: number = 100): string 
  * Check if a character has enough content to analyze
  */
 export function hasAnalyzableContent(char: Character): boolean {
-    const fields = getPopulatedFields(char);
-    return fields.length > 0;
+    return getPopulatedFields(char).length > 0;
 }
 
 /**
@@ -478,14 +323,13 @@ export function validateCharacter(char: Character): string[] {
         issues.push('Character has no name');
     }
 
-    const fields = getPopulatedFields(char);
-    if (fields.length === 0) {
-        issues.push('Character has no populated fields');
+    if (!char.data) {
+        issues.push('Character has no data object');
+        return issues;
+    }
 
-        // Add diagnostic hint
-        if (isShallowCharacter(char)) {
-            issues.push('Character appears to be shallow-loaded (missing data.* fields)');
-        }
+    if (getPopulatedFields(char).length === 0) {
+        issues.push('Character has no populated fields');
     }
 
     return issues;
@@ -500,14 +344,14 @@ export function validateCharacter(char: Character): string[] {
  */
 export function prepareForSearch(chars: Character[]): Array<{ char: Character; index: number; searchText: string }> {
     return chars
+        .filter(char => char?.name && char?.data)
         .map((char, index) => ({
             char,
             index,
             searchText: [
                 char.name,
-                char.description?.substring(0, 200),
-                char.personality?.substring(0, 100),
+                char.data!.description?.substring(0, 200),
+                char.data!.personality?.substring(0, 100),
             ].filter(Boolean).join(' ').toLowerCase(),
-        }))
-        .filter(item => item.char?.name);
+        }));
 }
