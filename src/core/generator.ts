@@ -205,19 +205,53 @@ export function getApiInfo(): { source: string; model: string; isReady: boolean 
     };
 }
 
+// src/core/generator.ts
+
 function getCurrentApiStatus(): ApiStatusInfo {
     const ctx = SillyTavern.getContext();
     const ccs = ctx.chatCompletionSettings || {};
 
+    // CHANGED: Check which API mode ST is actually using
+    const isTextCompletion = ctx.mainApi === 'textgenerationwebui';
+
     let model = 'unknown';
-    try {
-        model = ctx.getChatCompletionModel?.() || 'unknown';
-    } catch {
-        // Some ST versions may not have this
+    let source = 'unknown';
+    let apiType: 'cc' | 'tc' = 'cc';
+
+    if (isTextCompletion) {
+        // Text completion mode - model is in onlineStatus for OpenRouter text
+        // The onlineStatus contains the actual connected model
+        source = 'text-completion';
+        model = ctx.onlineStatus || 'unknown';
+        apiType = 'tc';
+
+        // Try to get more specific source info
+        const tcs = ctx.textCompletionSettings;
+        if (tcs) {
+            // For OpenRouter text completion, the model shows in onlineStatus
+            source = 'openrouter-text';
+        }
+    } else {
+        // Chat completion mode
+        source = ccs.chat_completion_source || 'unknown';
+        apiType = 'cc';
+
+        try {
+            model = ctx.getChatCompletionModel?.() || 'unknown';
+        } catch {
+            // Fallback
+        }
     }
 
-    const source = ccs.chat_completion_source || ctx.mainApi || 'unknown';
     const isReady = isCurrentApiReady();
+
+    // CHANGED: Get context size based on API type
+    let contextSize = DEFAULT_CONTEXT_SIZE;
+    if (isTextCompletion) {
+        contextSize = ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+    } else {
+        contextSize = ccs.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+    }
 
     return {
         mode: 'current',
@@ -225,13 +259,14 @@ function getCurrentApiStatus(): ApiStatusInfo {
         source,
         model,
         modelDisplay: truncateModel(model),
-        apiType: ctx.mainApi === 'textgenerationwebui' ? 'tc' : 'cc',
-        contextSize: ccs.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE,
+        apiType,
+        contextSize,
         isReady,
         statusText: ctx.onlineStatus || 'Unknown',
         error: isReady ? null : `API not connected (status: ${ctx.onlineStatus || 'unknown'})`,
     };
 }
+
 
 function getProfileApiStatus(profileId: string | null): ApiStatusInfo {
     if (!profileId) {

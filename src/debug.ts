@@ -259,7 +259,13 @@ export function collectDebugInfo(): Record<string, unknown> {
  * Safely get current model from context
  */
 function safeGetCurrentModel(context: ReturnType<typeof SillyTavern.getContext>): string {
-    // Try the proper API first
+    // CHANGED: Check API mode first
+    if (context.mainApi === 'textgenerationwebui') {
+        // Text completion - model is typically in onlineStatus
+        return context.onlineStatus || 'unknown';
+    }
+
+    // Chat completion
     try {
         if (typeof context.getChatCompletionModel === 'function') {
             return context.getChatCompletionModel() || 'unknown';
@@ -268,26 +274,19 @@ function safeGetCurrentModel(context: ReturnType<typeof SillyTavern.getContext>)
         // Fall through
     }
 
-    // Fallback to reading from settings
+    // Fallback for chat completion
     try {
         const ccs = context.chatCompletionSettings;
         if (!ccs) return 'unknown';
 
-        const source = ccs.chat_completion_source || context.mainApi || 'unknown';
-
-        // Handle special cases for model key mapping
-        let modelKey: string;
-        if (source === 'makersuite') {
-            modelKey = 'google_model';
-        } else {
-            modelKey = `${source}_model`;
-        }
-
+        const source = ccs.chat_completion_source || 'unknown';
+        const modelKey = source === 'makersuite' ? 'google_model' : `${source}_model`;
         return (ccs as Record<string, unknown>)[modelKey] as string || 'unknown';
     } catch {
         return 'unknown';
     }
 }
+
 
 /**
  * Export debug info as JSON string
