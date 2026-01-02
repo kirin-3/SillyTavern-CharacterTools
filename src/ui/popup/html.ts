@@ -32,6 +32,7 @@ function formatApiDisplay(source: string, model: string): string {
 export function buildPopupContent(): string {
     const apiInfo = getApiInfo();
     const displayText = formatApiDisplay(apiInfo.source, apiInfo.model);
+    const titleText = `${apiInfo.source} • ${apiInfo.model}\nContext: ${apiInfo.contextSize.toLocaleString()} • Max Output: ${apiInfo.maxOutput.toLocaleString()}`;
 
     return `
     <div class="${MODULE_NAME}_popup" id="${MODULE_NAME}_popup">
@@ -42,9 +43,10 @@ export function buildPopupContent(): string {
           <span>Character Tools</span>
         </div>
         <div class="${MODULE_NAME}_popup_header_right">
-          <div class="${MODULE_NAME}_api_status ${apiInfo.isReady ? 'connected' : 'disconnected'}" title="${apiInfo.source} • ${apiInfo.model}">
+          <div class="${MODULE_NAME}_api_status ${apiInfo.isReady ? 'connected' : 'disconnected'}" id="${MODULE_NAME}_api_status_display" title="${titleText}">
             <i class="fa-solid fa-circle"></i>
-            <span>${displayText}</span>
+            <span class="${MODULE_NAME}_api_status_text">${displayText}</span>
+            <span class="${MODULE_NAME}_api_status_limits">${apiInfo.maxOutput.toLocaleString()}t</span>
           </div>
           <button id="${MODULE_NAME}_settings_btn" class="${MODULE_NAME}_icon_btn" title="Settings">
             <i class="fa-solid fa-gear"></i>

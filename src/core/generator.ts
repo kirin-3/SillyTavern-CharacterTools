@@ -192,45 +192,42 @@ export function getApiStatus(generationSettings?: GenerationSettings): ApiStatus
     return getProfileApiStatus(settings.profileId);
 }
 
-
 /**
  * Legacy helper for existing code that just needs basic info
  */
-export function getApiInfo(): { source: string; model: string; isReady: boolean } {
+export function getApiInfo(): { source: string; model: string; maxOutput: number; contextSize: number; isReady: boolean } {
     const status = getApiStatus();
     return {
         source: status.source,
         model: status.model,
+        maxOutput: status.maxOutput,
+        contextSize: status.contextSize,
         isReady: status.isReady,
     };
 }
 
-// src/core/generator.ts
-
 function getCurrentApiStatus(): ApiStatusInfo {
     const ctx = SillyTavern.getContext();
     const ccs = ctx.chatCompletionSettings || {};
+    const tcs = ctx.textCompletionSettings || {};
 
-    // CHANGED: Check which API mode ST is actually using
+    // Check which API mode ST is actually using
     const isTextCompletion = ctx.mainApi === 'textgenerationwebui';
 
     let model = 'unknown';
     let source = 'unknown';
     let apiType: 'cc' | 'tc' = 'cc';
+    let contextSize = DEFAULT_CONTEXT_SIZE;
+    let maxOutput = DEFAULT_MAX_TOKENS;
 
     if (isTextCompletion) {
         // Text completion mode - model is in onlineStatus for OpenRouter text
-        // The onlineStatus contains the actual connected model
         source = 'text-completion';
         model = ctx.onlineStatus || 'unknown';
         apiType = 'tc';
-
-        // Try to get more specific source info
-        const tcs = ctx.textCompletionSettings;
-        if (tcs) {
-            // For OpenRouter text completion, the model shows in onlineStatus
-            source = 'openrouter-text';
-        }
+        contextSize = ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+        // Text completion max tokens from settings
+        maxOutput = (tcs as Record<string, unknown>).max_tokens as number || DEFAULT_MAX_TOKENS;
     } else {
         // Chat completion mode
         source = ccs.chat_completion_source || 'unknown';
@@ -241,16 +238,17 @@ function getCurrentApiStatus(): ApiStatusInfo {
         } catch {
             // Fallback
         }
+
+        contextSize = ccs.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+        maxOutput = ccs.openai_max_tokens || DEFAULT_MAX_TOKENS;
     }
 
     const isReady = isCurrentApiReady();
 
-    // CHANGED: Get context size based on API type
-    let contextSize = DEFAULT_CONTEXT_SIZE;
-    if (isTextCompletion) {
-        contextSize = ctx.maxContext || DEFAULT_CONTEXT_SIZE;
-    } else {
-        contextSize = ccs.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+    // Check for max tokens override in our settings
+    const extSettings = getSettings();
+    if (extSettings.generationSettings.maxTokensOverride !== null) {
+        maxOutput = extSettings.generationSettings.maxTokensOverride;
     }
 
     return {
@@ -261,12 +259,12 @@ function getCurrentApiStatus(): ApiStatusInfo {
         modelDisplay: truncateModel(model),
         apiType,
         contextSize,
+        maxOutput,
         isReady,
         statusText: ctx.onlineStatus || 'Unknown',
         error: isReady ? null : `API not connected (status: ${ctx.onlineStatus || 'unknown'})`,
     };
 }
-
 
 function getProfileApiStatus(profileId: string | null): ApiStatusInfo {
     if (!profileId) {
@@ -278,6 +276,7 @@ function getProfileApiStatus(profileId: string | null): ApiStatusInfo {
             modelDisplay: 'None',
             apiType: 'cc',
             contextSize: DEFAULT_CONTEXT_SIZE,
+            maxOutput: DEFAULT_MAX_TOKENS,
             isReady: false,
             statusText: 'Not configured',
             error: 'Select a connection profile in settings',
@@ -295,6 +294,7 @@ function getProfileApiStatus(profileId: string | null): ApiStatusInfo {
             modelDisplay: 'Unknown',
             apiType: 'cc',
             contextSize: DEFAULT_CONTEXT_SIZE,
+            maxOutput: DEFAULT_MAX_TOKENS,
             isReady: false,
             statusText: 'Error',
             error: 'Selected profile no longer exists. It may have been deleted.',
@@ -302,6 +302,7 @@ function getProfileApiStatus(profileId: string | null): ApiStatusInfo {
     }
 
     const isSupported = isProfileValid(profileId);
+    const { contextSize, maxOutput } = getProfileLimits(profile);
 
     return {
         mode: 'profile',
@@ -310,7 +311,8 @@ function getProfileApiStatus(profileId: string | null): ApiStatusInfo {
         model: profile.model,
         modelDisplay: truncateModel(profile.model),
         apiType: profile.mode,
-        contextSize: getContextSizeForProfile(profile),
+        contextSize,
+        maxOutput,
         isReady: isSupported,
         statusText: isSupported ? 'Ready' : 'Invalid',
         error: isSupported ? null : 'Profile configuration is invalid. Check Connection Manager.',
@@ -331,8 +333,12 @@ function truncateModel(model: string): string {
     return stripped;
 }
 
-function getContextSizeForProfile(profile: ConnectionProfile): number {
+function getProfileLimits(profile: ConnectionProfile): { contextSize: number; maxOutput: number } {
     const ctx = SillyTavern.getContext();
+    const extSettings = getSettings();
+
+    let contextSize = DEFAULT_CONTEXT_SIZE;
+    let maxOutput = DEFAULT_MAX_TOKENS;
 
     // Try to get from profile's linked preset
     try {
@@ -343,10 +349,15 @@ function getContextSizeForProfile(profile: ConnectionProfile): number {
             const preset = pm.getCompletionPresetByName?.(profile.preset) as Record<string, unknown> | undefined;
             if (preset) {
                 if (typeof preset.openai_max_context === 'number') {
-                    return preset.openai_max_context;
+                    contextSize = preset.openai_max_context;
+                } else if (typeof preset.max_context === 'number') {
+                    contextSize = preset.max_context;
                 }
-                if (typeof preset.max_context === 'number') {
-                    return preset.max_context;
+
+                if (typeof preset.openai_max_tokens === 'number') {
+                    maxOutput = preset.openai_max_tokens;
+                } else if (typeof preset.max_tokens === 'number') {
+                    maxOutput = preset.max_tokens;
                 }
             }
         }
@@ -354,11 +365,53 @@ function getContextSizeForProfile(profile: ConnectionProfile): number {
         // Fall through to fallback
     }
 
-    // Fallback to current settings
-    const ccs = ctx.chatCompletionSettings;
-    return ccs?.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+    // Fallback to current settings if preset lookup failed
+    if (contextSize === DEFAULT_CONTEXT_SIZE) {
+        const ccs = ctx.chatCompletionSettings;
+        contextSize = ccs?.openai_max_context || ctx.maxContext || DEFAULT_CONTEXT_SIZE;
+    }
+
+    if (maxOutput === DEFAULT_MAX_TOKENS) {
+        const ccs = ctx.chatCompletionSettings;
+        maxOutput = ccs?.openai_max_tokens || DEFAULT_MAX_TOKENS;
+    }
+
+    // Check for override in our settings
+    if (extSettings.generationSettings.maxTokensOverride !== null) {
+        maxOutput = extSettings.generationSettings.maxTokensOverride;
+    }
+
+    return { contextSize, maxOutput };
 }
 
+/**
+ * Get current sampler settings for display
+ */
+export function getSamplerSettings(): Record<string, number | string | boolean> {
+    const ctx = SillyTavern.getContext();
+    const isTextCompletion = ctx.mainApi === 'textgenerationwebui';
+
+    if (isTextCompletion) {
+        const tcs = ctx.textCompletionSettings || {};
+        return {
+            temperature: (tcs as Record<string, unknown>).temp as number ?? 1,
+            top_p: (tcs as Record<string, unknown>).top_p as number ?? 1,
+            top_k: (tcs as Record<string, unknown>).top_k as number ?? 0,
+            min_p: (tcs as Record<string, unknown>).min_p as number ?? 0,
+            rep_pen: (tcs as Record<string, unknown>).rep_pen as number ?? 1,
+        };
+    }
+
+    const ccs = ctx.chatCompletionSettings || {};
+    return {
+        temperature: ccs.temp_openai ?? 1,
+        top_p: ccs.top_p_openai ?? 1,
+        top_k: ccs.top_k_openai ?? 0,
+        min_p: ccs.min_p_openai ?? 0,
+        freq_pen: ccs.freq_pen_openai ?? 0,
+        pres_pen: ccs.pres_pen_openai ?? 0,
+    };
+}
 
 // ============================================================================
 // MAIN GENERATION FUNCTION
@@ -412,7 +465,7 @@ export async function runStageGeneration(
         apiModel: apiStatus.model,
     });
 
-    const maxTokens = settings.generationSettings.maxTokensOverride ?? DEFAULT_MAX_TOKENS;
+    const maxTokens = settings.generationSettings.maxTokensOverride ?? apiStatus.maxOutput;
 
     let result: GenerationResult;
 
@@ -481,6 +534,7 @@ export async function runRefinementGeneration(
     }
 
     const systemPrompt = getFullSystemPrompt('rewrite');
+    const apiStatus = getApiStatus();
 
     debugLog('info', 'Starting refinement generation', {
         iteration: state.iterationCount + 1,
@@ -488,7 +542,7 @@ export async function runRefinementGeneration(
         promptLength: userPrompt.length,
     });
 
-    const maxTokens = settings.generationSettings.maxTokensOverride ?? DEFAULT_MAX_TOKENS;
+    const maxTokens = settings.generationSettings.maxTokensOverride ?? apiStatus.maxOutput;
 
     if (settings.generationSettings.mode === 'current') {
         return await generateWithCurrent(
@@ -832,7 +886,7 @@ function validateStructuredResponse(
 export async function getStageTokenCount(
     state: PipelineState,
     stage: StageName,
-): Promise<{ promptTokens: number; contextSize: number; percentage: number } | null> {
+): Promise<{ promptTokens: number; contextSize: number; maxOutput: number; percentage: number } | null> {
     const ctx = SillyTavern.getContext();
 
     if (!state.character) return null;
@@ -850,15 +904,17 @@ export async function getStageTokenCount(
         const fullPrompt = systemPrompt + '\n\n' + prompt;
         const promptTokens = await ctx.getTokenCountAsync(fullPrompt);
 
-        // Get context size from current status
+        // Get context size and max output from current status
         const status = getApiStatus();
         const contextSize = status.contextSize;
+        const maxOutput = status.maxOutput;
 
         const percentage = Math.round((promptTokens / contextSize) * 100);
 
         return {
             promptTokens,
             contextSize,
+            maxOutput,
             percentage,
         };
     } catch (e) {
@@ -872,7 +928,7 @@ export async function getStageTokenCount(
  */
 export async function getRefinementTokenCount(
     state: PipelineState,
-): Promise<{ promptTokens: number; contextSize: number; percentage: number } | null> {
+): Promise<{ promptTokens: number; contextSize: number; maxOutput: number; percentage: number } | null> {
     const ctx = SillyTavern.getContext();
 
     if (!state.character || !state.results.rewrite || !state.results.analyze) return null;
@@ -892,16 +948,35 @@ export async function getRefinementTokenCount(
 
         const status = getApiStatus();
         const contextSize = status.contextSize;
+        const maxOutput = status.maxOutput;
 
         const percentage = Math.round((promptTokens / contextSize) * 100);
 
         return {
             promptTokens,
             contextSize,
+            maxOutput,
             percentage,
         };
     } catch (e) {
         logError('Refinement token count failed', e);
+        return null;
+    }
+}
+
+/**
+ * Get token count for arbitrary text
+ */
+export async function getTokenCount(text: string): Promise<number | null> {
+    const ctx = SillyTavern.getContext();
+
+    if (typeof ctx.getTokenCountAsync !== 'function') {
+        return null;
+    }
+
+    try {
+        return await ctx.getTokenCountAsync(text);
+    } catch {
         return null;
     }
 }

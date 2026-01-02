@@ -74,15 +74,21 @@ export function updateApiStatus(): void {
     if (!el) return;
 
     const apiInfo = getApiInfo();
-    const statusEl = el.querySelector(`.${MODULE_NAME}_api_status`);
+    const statusEl = el.querySelector(`#${MODULE_NAME}_api_status_display`);
 
     if (statusEl) {
         statusEl.className = `${MODULE_NAME}_api_status ${apiInfo.isReady ? 'connected' : 'disconnected'}`;
-        statusEl.setAttribute('title', `${apiInfo.source} • ${apiInfo.model}`);
+        const titleText = `${apiInfo.source} • ${apiInfo.model}\nContext: ${apiInfo.contextSize.toLocaleString()} • Max Output: ${apiInfo.maxOutput.toLocaleString()}`;
+        statusEl.setAttribute('title', titleText);
 
-        const textSpan = statusEl.querySelector('span');
+        const textSpan = statusEl.querySelector(`.${MODULE_NAME}_api_status_text`);
         if (textSpan) {
             textSpan.textContent = formatApiDisplay(apiInfo.source, apiInfo.model);
+        }
+
+        const limitsSpan = statusEl.querySelector(`.${MODULE_NAME}_api_status_limits`);
+        if (limitsSpan) {
+            limitsSpan.textContent = `${apiInfo.maxOutput.toLocaleString()}t`;
         }
     }
 
@@ -267,11 +273,33 @@ export async function updateTokenEstimate(): Promise<void> {
         return;
     }
 
+    // Check for budget warning (rewrite stage especially)
+    const isRewriteStage = state.activeStageView === 'rewrite';
+    let budgetWarning = '';
     let colorClass = '';
-    if (counts.percentage > 100) colorClass = 'danger';
-    else if (counts.percentage > 80) colorClass = 'warning';
 
-    tokenEl.innerHTML = `<i class="fa-solid fa-microchip"></i> ${counts.promptTokens.toLocaleString()}t (${counts.percentage}%)`;
+    // Context percentage warnings
+    if (counts.percentage > 100) {
+        colorClass = 'danger';
+    } else if (counts.percentage > 80) {
+        colorClass = 'warning';
+    }
+
+    // For rewrite stage, warn if character content likely exceeds max output
+    if (isRewriteStage && counts.promptTokens > 0) {
+        // Rough estimate: character content is about 60-70% of prompt tokens
+        // If that exceeds max output, the rewrite will be truncated
+        const estimatedCharTokens = Math.round(counts.promptTokens * 0.65);
+        if (estimatedCharTokens > counts.maxOutput) {
+            budgetWarning = ` ⚠️ Output may truncate (${counts.maxOutput}t limit)`;
+            colorClass = 'danger';
+        } else if (estimatedCharTokens > counts.maxOutput * 0.8) {
+            budgetWarning = ' ⚠️ Near output limit';
+            colorClass = colorClass || 'warning';
+        }
+    }
+
+    tokenEl.innerHTML = `<i class="fa-solid fa-microchip"></i> ${counts.promptTokens.toLocaleString()}t (${counts.percentage}%)${budgetWarning}`;
     tokenEl.className = `${MODULE_NAME}_token_estimate ${colorClass}`;
 }
 

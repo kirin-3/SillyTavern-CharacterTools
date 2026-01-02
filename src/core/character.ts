@@ -1,8 +1,9 @@
-// src/character.ts
+// src/core/character.ts
 //
-// Character utilities - field extraction, formatting, etc.
+// Character utilities - field extraction, formatting, token counting.
 
 import { CHARACTER_FIELDS } from '../constants';
+import { getTokenCount } from './generator';
 import type { Character, CharacterField, PopulatedField, DepthPrompt, CharacterBook, FieldSelection } from '../types';
 
 // ============================================================================
@@ -246,6 +247,46 @@ export function getPopulatedFieldCount(char: Character): number {
 }
 
 // ============================================================================
+// TOKEN COUNTING
+// ============================================================================
+
+/**
+ * Get token count for selected fields
+ */
+export async function getSelectedFieldsTokenCount(
+    char: Character,
+    selection: FieldSelection,
+): Promise<number | null> {
+    const summary = buildCharacterSummaryFromSelection(char, selection);
+    return await getTokenCount(summary);
+}
+
+/**
+ * Get token count for all populated fields
+ */
+export async function getTotalTokenCount(char: Character): Promise<number | null> {
+    const summary = buildCharacterSummary(char);
+    return await getTokenCount(summary);
+}
+
+/**
+ * Get token counts per field (for display)
+ */
+export async function getFieldTokenCounts(char: Character): Promise<Map<string, number>> {
+    const fields = getPopulatedFields(char);
+    const counts = new Map<string, number>();
+
+    for (const field of fields) {
+        const tokens = await getTokenCount(field.value);
+        if (tokens !== null) {
+            counts.set(field.key, tokens);
+        }
+    }
+
+    return counts;
+}
+
+// ============================================================================
 // DIAGNOSTICS
 // ============================================================================
 
@@ -338,7 +379,7 @@ export function buildCharacterSummary(char: Character): string {
 
 /**
  * Build character summary using only selected fields.
- * Sanitizes {{char}} placeholders to prevent ST substitution.
+ * Sanitizes placeholders to prevent ST substitution.
  */
 export function buildCharacterSummaryFromSelection(
     char: Character,
@@ -375,12 +416,11 @@ export function buildCharacterSummaryFromSelection(
         result = `# CHARACTER: ${char.name}\n\n${sections.join('\n\n')}`;
     }
 
-    // CRITICAL: Replace {{char}} placeholders with actual name
+    // CRITICAL: Replace placeholders with actual name
     // This prevents ST's substituteParams from replacing with active chat character
     return result
         .replace(/\{\{char\}\}/gi, char.name)
-        .replace(/\{\{charName\}\}/gi, char.name)
-        .replace(/<char>/gi, char.name);
+        .replace(/\{\{charName\}\}/gi, char.name);
 }
 
 /**

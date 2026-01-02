@@ -204,6 +204,69 @@
 }
 
 /* ============================================================================
+   API STATUS - ENHANCED
+   ============================================================================ */
+
+.character_tools_api_status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ct-font-base);
+  opacity: 0.7;
+  cursor: help;
+}
+
+.character_tools_api_status i:first-child {
+  font-size: 8px;
+}
+
+.character_tools_api_status.connected i:first-child {
+  color: var(--ct-success);
+}
+
+.character_tools_api_status.disconnected i:first-child {
+  color: var(--ct-danger);
+}
+
+.character_tools_api_status_text {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character_tools_api_status_limits {
+  padding: 1px 6px;
+  background: var(--SmartThemeBorderColor);
+  border-radius: 3px;
+  font-size: var(--ct-font-meta);
+  font-family: var(--monoFontFamily);
+  opacity: 0.8;
+}
+
+/* Token estimate with budget warning */
+.character_tools_token_estimate {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-gap-xs);
+  font-size: var(--ct-font-meta);
+  font-family: var(--monoFontFamily);
+  opacity: 0.7;
+  flex-wrap: wrap;
+}
+
+.character_tools_token_estimate.warning {
+  color: var(--ct-warning);
+  opacity: 1;
+}
+
+.character_tools_token_estimate.danger {
+  color: var(--ct-danger);
+  opacity: 1;
+}
+
+
+/* ============================================================================
    MAIN CONTENT - SCROLL MODEL
    ============================================================================ */
 

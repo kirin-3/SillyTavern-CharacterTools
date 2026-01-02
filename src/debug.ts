@@ -132,6 +132,38 @@ export function formatLogData(data: unknown): string {
 // ============================================================================
 
 /**
+ * Safely get current model from context
+ */
+function safeGetCurrentModel(context: ReturnType<typeof SillyTavern.getContext>): string {
+    // Check API mode first
+    if (context.mainApi === 'textgenerationwebui') {
+        // Text completion - model is typically in onlineStatus
+        return context.onlineStatus || 'unknown';
+    }
+
+    // Chat completion
+    try {
+        if (typeof context.getChatCompletionModel === 'function') {
+            return context.getChatCompletionModel() || 'unknown';
+        }
+    } catch {
+        // Fall through
+    }
+
+    // Fallback for chat completion
+    try {
+        const ccs = context.chatCompletionSettings;
+        if (!ccs) return 'unknown';
+
+        const source = ccs.chat_completion_source || 'unknown';
+        const modelKey = source === 'makersuite' ? 'google_model' : `${source}_model`;
+        return (ccs as Record<string, unknown>)[modelKey] as string || 'unknown';
+    } catch {
+        return 'unknown';
+    }
+}
+
+/**
  * Collect debug info for current state
  */
 export function collectDebugInfo(): Record<string, unknown> {
@@ -207,6 +239,7 @@ export function collectDebugInfo(): Record<string, unknown> {
                 model: apiStatus.model,
                 apiType: apiStatus.apiType,
                 contextSize: apiStatus.contextSize,
+                maxOutput: apiStatus.maxOutput,
                 isReady: apiStatus.isReady,
                 statusText: apiStatus.statusText,
                 apiError: apiStatus.error,
@@ -231,6 +264,7 @@ export function collectDebugInfo(): Record<string, unknown> {
             chatCompletionSource: context.chatCompletionSettings?.chat_completion_source ?? null,
             currentModel: safeGetCurrentModel(context),
             maxContext: context.chatCompletionSettings?.openai_max_context ?? context.maxContext ?? null,
+            maxOutput: context.chatCompletionSettings?.openai_max_tokens ?? null,
             legacyMaxContext: context.maxContext,
             characterCount: context.characters?.length ?? 0,
             hasActiveChat: !!(context.chat?.length),
@@ -254,39 +288,6 @@ export function collectDebugInfo(): Record<string, unknown> {
         },
     };
 }
-
-/**
- * Safely get current model from context
- */
-function safeGetCurrentModel(context: ReturnType<typeof SillyTavern.getContext>): string {
-    // CHANGED: Check API mode first
-    if (context.mainApi === 'textgenerationwebui') {
-        // Text completion - model is typically in onlineStatus
-        return context.onlineStatus || 'unknown';
-    }
-
-    // Chat completion
-    try {
-        if (typeof context.getChatCompletionModel === 'function') {
-            return context.getChatCompletionModel() || 'unknown';
-        }
-    } catch {
-        // Fall through
-    }
-
-    // Fallback for chat completion
-    try {
-        const ccs = context.chatCompletionSettings;
-        if (!ccs) return 'unknown';
-
-        const source = ccs.chat_completion_source || 'unknown';
-        const modelKey = source === 'makersuite' ? 'google_model' : `${source}_model`;
-        return (ccs as Record<string, unknown>)[modelKey] as string || 'unknown';
-    } catch {
-        return 'unknown';
-    }
-}
-
 
 /**
  * Export debug info as JSON string
@@ -329,6 +330,7 @@ export function generateDebugReport(): string {
         lines.push(`Model: ${status.model}`);
         lines.push(`Type: ${status.apiType}`);
         lines.push(`Context: ${status.contextSize}`);
+        lines.push(`Max Output: ${status.maxOutput}`);
         lines.push(`Ready: ${status.isReady ? '✅ Yes' : '❌ No'}`);
         if (status.apiError) {
             lines.push(`Error: ${status.apiError}`);
@@ -366,6 +368,7 @@ export function generateDebugReport(): string {
     lines.push(`Chat Completion Source: ${st.chatCompletionSource}`);
     lines.push(`Current Model: ${st.currentModel}`);
     lines.push(`Context Size: ${st.maxContext} (legacy: ${st.legacyMaxContext})`);
+    lines.push(`Max Output: ${st.maxOutput}`);
     lines.push(`Characters: ${st.characterCount}`);
     lines.push(`Has Active Chat: ${st.hasActiveChat ? 'Yes' : 'No'}`);
     lines.push('');

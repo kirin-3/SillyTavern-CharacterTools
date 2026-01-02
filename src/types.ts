@@ -148,6 +148,7 @@ export interface ApiStatusInfo {
     modelDisplay: string;
     apiType: 'cc' | 'tc';
     contextSize: number;
+    maxOutput: number;  // NEW
     isReady: boolean;
     statusText: string;
     error: string | null;
