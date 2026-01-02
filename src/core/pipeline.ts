@@ -1115,10 +1115,9 @@ export function validateRefinement(state: PipelineState): PipelineValidation {
         errors.push('Run analyze first to identify issues');
     }
 
-    const { onlineStatus } = SillyTavern.getContext();
-    if (onlineStatus !== 'Valid' && onlineStatus !== 'Connected') {
-        errors.push('API is not connected');
-    }
+    // REMOVED: The redundant/broken API check
+    // isApiReady() is already called in runRefinement() before validateRefinement()
+    // No need to duplicate it here with different logic
 
     const lastSnapshot = state.iterationHistory.length > 0
         ? state.iterationHistory[state.iterationHistory.length - 1]
@@ -1138,6 +1137,7 @@ export function validateRefinement(state: PipelineState): PipelineValidation {
         warnings,
     };
 }
+
 
 // ============================================================================
 // SERIALIZATION
