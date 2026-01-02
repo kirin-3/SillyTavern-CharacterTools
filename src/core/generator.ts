@@ -598,12 +598,14 @@ async function generateWithCurrent(
 
     // If using structured output, temporarily disable reasoning/thinking
     // Claude API doesn't allow thinking + tool_choice (structured output uses tool_choice)
-    const ccs = ctx.chatCompletionSettings;
+    const ccs = ctx.chatCompletionSettings as Record<string, unknown>;
     let originalReasoningEffort: string | undefined;
 
-    if (options.jsonSchema && ccs?.reasoning_effort) {
+    if (options.jsonSchema && ccs?.reasoning_effort &&
+        typeof ccs.reasoning_effort === 'string' &&
+        ccs.reasoning_effort !== 'auto') {
         originalReasoningEffort = ccs.reasoning_effort;
-        ccs.reasoning_effort = '';
+        ccs.reasoning_effort = 'auto';
         debugLog('info', 'Disabled reasoning_effort for structured output', {
             original: originalReasoningEffort,
         });
@@ -673,8 +675,9 @@ async function generateWithCurrent(
         return handleGenerationError(err);
     } finally {
         // Restore reasoning_effort if we disabled it
-        if (originalReasoningEffort !== undefined && ccs) {
-            ccs.reasoning_effort = originalReasoningEffort;
+        if (originalReasoningEffort !== undefined) {
+            const ccsRestore = ctx.chatCompletionSettings as Record<string, unknown>;
+            ccsRestore.reasoning_effort = originalReasoningEffort;
             debugLog('info', 'Restored reasoning_effort', { value: originalReasoningEffort });
         }
     }
@@ -698,6 +701,7 @@ async function generateWithProfile(
         };
     }
 
+    // Validate profile exists
     const profile = getProfile(profileId);
     if (!profile) {
         return {
@@ -706,6 +710,7 @@ async function generateWithProfile(
         };
     }
 
+    // Validate profile is supported
     if (!CMRS.isProfileSupported(profile)) {
         return {
             success: false,
@@ -734,7 +739,7 @@ async function generateWithProfile(
         if (options.jsonSchema) {
             overridePayload.json_schema = options.jsonSchema;
             // Disable reasoning when using structured output - Claude doesn't allow both
-            overridePayload.reasoning_effort = '';
+            overridePayload.reasoning_effort = 'auto';
             debugLog('info', 'Disabled reasoning_effort in payload for structured output', null);
         }
 
