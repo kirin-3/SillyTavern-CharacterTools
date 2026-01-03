@@ -148,6 +148,10 @@ export async function openSettingsModal(onClose?: () => void): Promise<void> {
     debugLog('info', 'Settings modal opened', null);
 }
 
+// ============================================================================
+// FLUSH PENDING SETTINGS
+// ============================================================================
+
 /**
  * Flush all pending debounced settings updates immediately
  */
@@ -155,13 +159,13 @@ function flushPendingSettings(): void {
     const modal = document.getElementById(`${MODULE_NAME}_settings_modal`);
     if (!modal) return;
 
-    // Get current values and save them directly
+    const settings = getSettings();
+
+    // Flush textarea values
     const userSystemPrompt = modal.querySelector(`#${MODULE_NAME}_user_system_prompt`) as HTMLTextAreaElement;
     const baseSystemPrompt = modal.querySelector(`#${MODULE_NAME}_base_system_prompt`) as HTMLTextAreaElement;
     const userRefinementPrompt = modal.querySelector(`#${MODULE_NAME}_user_refinement_prompt`) as HTMLTextAreaElement;
     const baseRefinementPrompt = modal.querySelector(`#${MODULE_NAME}_base_refinement_prompt`) as HTMLTextAreaElement;
-
-    const settings = getSettings();
 
     if (userSystemPrompt && userSystemPrompt.value !== settings.userSystemPrompt) {
         updateUserSystemPrompt(userSystemPrompt.value);
@@ -175,7 +179,24 @@ function flushPendingSettings(): void {
     if (baseRefinementPrompt && baseRefinementPrompt.value !== settings.baseRefinementPrompt) {
         updateBaseRefinementPrompt(baseRefinementPrompt.value);
     }
+
+    // Flush max tokens override
+    const useMaxTokensOverride = modal.querySelector(`#${MODULE_NAME}_use_max_tokens_override`) as HTMLInputElement;
+    const maxTokensInput = modal.querySelector(`#${MODULE_NAME}_max_tokens_override`) as HTMLInputElement;
+
+    if (useMaxTokensOverride && maxTokensInput) {
+        if (useMaxTokensOverride.checked) {
+            const value = parseInt(maxTokensInput.value, 10);
+            if (!isNaN(value) && value >= 100 && value <= 32000 && value !== settings.generationSettings.maxTokensOverride) {
+                updateGenerationSettings({ maxTokensOverride: value });
+            }
+        } else if (settings.generationSettings.maxTokensOverride !== null) {
+            // Checkbox unchecked but settings still has a value - clear it
+            updateGenerationSettings({ maxTokensOverride: null });
+        }
+    }
 }
+
 
 // ============================================================================
 // BUILD CONTENT
@@ -758,6 +779,12 @@ function initSettingsListeners(): void {
     const useMaxTokensOverride = modal.querySelector(`#${MODULE_NAME}_use_max_tokens_override`) as HTMLInputElement;
     const maxTokensInput = modal.querySelector(`#${MODULE_NAME}_max_tokens_override`) as HTMLInputElement;
 
+    // Debounced save for input changes
+    const debouncedMaxTokensUpdate = debounce('maxTokensOverride', (value: number) => {
+        updateGenerationSettings({ maxTokensOverride: value });
+        refreshApiStatusBanner();
+    });
+
     useMaxTokensOverride?.addEventListener('change', () => {
         const enabled = useMaxTokensOverride.checked;
         maxTokensInput.disabled = !enabled;
@@ -772,11 +799,28 @@ function initSettingsListeners(): void {
         refreshApiStatusBanner();
     });
 
-    maxTokensInput?.addEventListener('change', () => {
+    // Save on input (debounced)
+    maxTokensInput?.addEventListener('input', () => {
         if (!useMaxTokensOverride.checked) return;
 
         const value = parseInt(maxTokensInput.value, 10);
         if (!isNaN(value) && value >= 100 && value <= 32000) {
+            debouncedMaxTokensUpdate(value);
+        }
+    });
+
+    // Also save immediately on blur
+    maxTokensInput?.addEventListener('blur', () => {
+        if (!useMaxTokensOverride.checked) return;
+
+        const value = parseInt(maxTokensInput.value, 10);
+        if (!isNaN(value) && value >= 100 && value <= 32000) {
+            // Clear any pending debounce and save immediately
+            const existingTimer = debounceTimers.get('maxTokensOverride');
+            if (existingTimer) {
+                clearTimeout(existingTimer);
+                debounceTimers.delete('maxTokensOverride');
+            }
             updateGenerationSettings({ maxTokensOverride: value });
             refreshApiStatusBanner();
         }
@@ -959,6 +1003,7 @@ function initSettingsListeners(): void {
         }
     });
 }
+
 
 // ============================================================================
 // REFRESH FUNCTIONS
