@@ -78,6 +78,8 @@ import {
     saveSchemaPreset,
     getPromptPreset,
     getSchemaPreset,
+    updatePromptPreset,  // ADDED
+    updateSchemaPreset,  // ADDED
 } from '../../core/settings';
 import {
     validateSchema,
@@ -1581,6 +1583,44 @@ export async function saveCurrentPromptAsPreset(): Promise<void> {
         return;
     }
 
+    const config = state.pipeline.configs[state.activeStageView];
+
+    // CHANGED: Check if we're editing an existing custom preset
+    if (config.promptPresetId) {
+        const existingPreset = getPromptPreset(config.promptPresetId);
+
+        // If it's a custom preset (not builtin), update it instead of creating new
+        if (existingPreset && !existingPreset.isBuiltin) {
+            const { Popup } = SillyTavern.getContext();
+
+            const confirmed = await Popup.show.confirm(
+                'Update Preset?',
+                `Update "${existingPreset.name}" with your changes, or save as a new preset?`,
+                {
+                    okButton: 'Update Existing',
+                    cancelButton: 'Save as New',
+                },
+            );
+
+            if (confirmed) {
+                // Update existing preset
+                const success = updatePromptPreset(config.promptPresetId, {
+                    prompt: promptContent,
+                });
+
+                if (success) {
+                    toastr.success(`Preset "${existingPreset.name}" updated`);
+                    updateStageConfigUI();
+                } else {
+                    toastr.error('Failed to update preset');
+                }
+                return;
+            }
+            // Fall through to create new preset
+        }
+    }
+
+    // Create new preset (original behavior)
     const { Popup } = SillyTavern.getContext();
 
     const name = await Popup.show.input(
@@ -1632,6 +1672,44 @@ export async function saveCurrentSchemaAsPreset(): Promise<void> {
         return;
     }
 
+    const config = state.pipeline.configs[state.activeStageView];
+
+    // CHANGED: Check if we're editing an existing custom preset
+    if (config.schemaPresetId) {
+        const existingPreset = getSchemaPreset(config.schemaPresetId);
+
+        // If it's a custom preset (not builtin), update it instead of creating new
+        if (existingPreset && !existingPreset.isBuiltin) {
+            const { Popup } = SillyTavern.getContext();
+
+            const confirmed = await Popup.show.confirm(
+                'Update Preset?',
+                `Update "${existingPreset.name}" with your changes, or save as a new preset?`,
+                {
+                    okButton: 'Update Existing',
+                    cancelButton: 'Save as New',
+                },
+            );
+
+            if (confirmed) {
+                // Update existing preset
+                const success = updateSchemaPreset(config.schemaPresetId, {
+                    schema: validation.schema!,
+                });
+
+                if (success) {
+                    toastr.success(`Preset "${existingPreset.name}" updated`);
+                    updateStageConfigUI();
+                } else {
+                    toastr.error('Failed to update preset');
+                }
+                return;
+            }
+            // Fall through to create new preset
+        }
+    }
+
+    // Create new preset (original behavior)
     const { Popup } = SillyTavern.getContext();
 
     const name = await Popup.show.input(
@@ -1663,6 +1741,7 @@ export async function saveCurrentSchemaAsPreset(): Promise<void> {
         toastr.error(`Failed to save preset: ${(e as Error).message}`);
     }
 }
+
 
 export async function previewPrompt(): Promise<void> {
     const state = getState();
