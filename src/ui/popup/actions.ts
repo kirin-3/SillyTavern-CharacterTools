@@ -1299,7 +1299,6 @@ export function updateCustomPrompt(value: string): void {
     const config = state.pipeline.configs[state.activeStageView];
 
     // Only clear preset ID if it's a builtin preset
-    // Custom presets can be edited in place
     let shouldClearPreset = false;
     if (config.promptPresetId) {
         const preset = getPromptPreset(config.promptPresetId);
@@ -1313,7 +1312,7 @@ export function updateCustomPrompt(value: string): void {
         promptPresetId: shouldClearPreset ? null : config.promptPresetId,
     }));
     updateTokenEstimate();
-    updateStageConfigUI();
+    // DON'T call updateStageConfigUI() here - it will overwrite the textarea
 }
 
 export function updateCustomSchema(value: string): void {
@@ -1322,7 +1321,6 @@ export function updateCustomSchema(value: string): void {
 
     const config = state.pipeline.configs[state.activeStageView];
 
-    // Only clear preset ID if it's a builtin preset
     let shouldClearPreset = false;
     if (config.schemaPresetId) {
         const preset = getSchemaPreset(config.schemaPresetId);
@@ -1336,13 +1334,12 @@ export function updateCustomSchema(value: string): void {
         schemaPresetId: shouldClearPreset ? null : config.schemaPresetId,
     }));
 
-    // Validate and cache
     if (value.trim()) {
         const validation = validateSchema(value);
         setSchemaValidationInCache(value, validation);
     }
 
-    updateStageConfigUI();
+    // DON'T call updateStageConfigUI() here
 }
 
 export function toggleStructuredOutput(enabled: boolean): void {

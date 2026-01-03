@@ -219,22 +219,29 @@ export function updateStageConfigState(
     }
 
     // Update prompt textarea
+    // Update prompt textarea
     const promptTextarea = container.querySelector(`#${MODULE_NAME}_custom_prompt`) as HTMLTextAreaElement;
     if (promptTextarea) {
+    // Determine what content should be shown
         let promptContent = config.customPrompt;
-        if (config.promptPresetId) {
+        if (config.promptPresetId && !config.customPrompt) {
             const preset = getPromptPreset(config.promptPresetId);
             if (preset) promptContent = preset.prompt;
         }
-        if (promptTextarea.value !== promptContent) {
-            promptTextarea.value = promptContent;
+
+        // Only set value if textarea doesn't have focus (user isn't actively typing)
+        if (document.activeElement !== promptTextarea) {
+            if (promptTextarea.value !== promptContent) {
+                promptTextarea.value = promptContent;
+            }
         }
         promptTextarea.disabled = isGenerating;
 
         // Update token count for prompt (debounced)
         const tokenCountEl = container.querySelector(`#${MODULE_NAME}_prompt_token_count`);
         if (tokenCountEl) {
-            countTokens(promptContent, (tokens) => {
+        // Use the actual textarea value for token count (what user sees)
+            countTokens(promptTextarea.value, (tokens) => {
                 if (tokens !== null) {
                     tokenCountEl.textContent = `${tokens.toLocaleString()} tokens`;
                 } else {
@@ -243,6 +250,7 @@ export function updateStageConfigState(
             });
         }
     }
+
 
     // Update structured output toggle
     const structuredToggle = container.querySelector(`#${MODULE_NAME}_use_structured`) as HTMLInputElement;
@@ -271,8 +279,14 @@ export function updateStageConfigState(
     // Update schema textarea
     const schemaTextarea = container.querySelector(`#${MODULE_NAME}_custom_schema`) as HTMLTextAreaElement;
     if (schemaTextarea) {
-        if (schemaTextarea.value !== schemaContent) {
-            schemaTextarea.value = schemaContent;
+        if (document.activeElement !== schemaTextarea) {
+            let schemaContent = config.customSchema;
+            if (config.schemaPresetId && !config.customSchema) {
+                schemaContent = resolvedSchemaContent ?? resolveSchemaContent(config);
+            }
+            if (schemaTextarea.value !== schemaContent) {
+                schemaTextarea.value = schemaContent;
+            }
         }
         schemaTextarea.disabled = isGenerating;
     }
