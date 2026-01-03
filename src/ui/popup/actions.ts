@@ -11,6 +11,7 @@ import {
     markUnsavedChanges,
     clearUnsavedChanges,
     setSchemaValidationInCache,
+    getSchemaValidationFromCache,
 } from './state';
 import {
     updateAllComponents,
@@ -1292,13 +1293,61 @@ export function setSchemaPreset(presetId: string | null): void {
     updateStageConfigUI();
 }
 
+// Add this new export function
+export function updateSaveButtonState(): void {
+    const state = getState();
+    const el = getElement();
+    if (!state || !el) return;
+
+    const config = state.pipeline.configs[state.activeStageView];
+
+    const promptTextarea = el.querySelector(`#${MODULE_NAME}_custom_prompt`) as HTMLTextAreaElement;
+    const schemaTextarea = el.querySelector(`#${MODULE_NAME}_custom_schema`) as HTMLTextAreaElement;
+    const savePromptBtn = el.querySelector(`#${MODULE_NAME}_save_prompt_preset_btn`) as HTMLButtonElement;
+    const saveSchemaBtn = el.querySelector(`#${MODULE_NAME}_save_schema_preset_btn`) as HTMLButtonElement;
+
+    if (savePromptBtn && promptTextarea) {
+        const currentValue = promptTextarea.value;
+        const hasContent = currentValue.trim().length > 0;
+
+        let canSave = hasContent;
+        if (hasContent && config.promptPresetId) {
+            const preset = getPromptPreset(config.promptPresetId);
+            if (preset && currentValue === preset.prompt) {
+                canSave = false;
+            }
+        }
+        savePromptBtn.disabled = !canSave;
+    }
+
+    if (saveSchemaBtn && schemaTextarea) {
+        const currentValue = schemaTextarea.value;
+        const hasContent = currentValue.trim().length > 0;
+
+        // Check validation from cache
+        const validation = hasContent ? getSchemaValidationFromCache(currentValue) : null;
+        const isValid = hasContent && validation ? validation.valid : false;
+
+        let canSave = hasContent && isValid;
+        if (canSave && config.schemaPresetId) {
+            const preset = getSchemaPreset(config.schemaPresetId);
+            if (preset) {
+                const presetJson = JSON.stringify(preset.schema, null, 2);
+                if (currentValue === presetJson) {
+                    canSave = false;
+                }
+            }
+        }
+        saveSchemaBtn.disabled = !canSave;
+    }
+}
+
 export function updateCustomPrompt(value: string): void {
     const state = getState();
     if (!state) return;
 
     const config = state.pipeline.configs[state.activeStageView];
 
-    // Only clear preset ID if it's a builtin preset
     let shouldClearPreset = false;
     if (config.promptPresetId) {
         const preset = getPromptPreset(config.promptPresetId);
@@ -1312,8 +1361,12 @@ export function updateCustomPrompt(value: string): void {
         promptPresetId: shouldClearPreset ? null : config.promptPresetId,
     }));
     updateTokenEstimate();
-    // DON'T call updateStageConfigUI() here - it will overwrite the textarea
+
+    // CHANGED: Update just the save button state
+    updateSaveButtonState();
 }
+
+
 
 export function updateCustomSchema(value: string): void {
     const state = getState();
@@ -1339,8 +1392,10 @@ export function updateCustomSchema(value: string): void {
         setSchemaValidationInCache(value, validation);
     }
 
-    // DON'T call updateStageConfigUI() here
+    // CHANGED: Update just the save button state
+    updateSaveButtonState();
 }
+
 
 export function toggleStructuredOutput(enabled: boolean): void {
     const state = getState();

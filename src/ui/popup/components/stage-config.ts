@@ -23,9 +23,9 @@ export function renderStageConfig(
     const promptPresets = getPromptPresets(stage);
     const schemaPresets = getSchemaPresets(stage);
 
-    // Get current prompt content
+    // Get current prompt content - what's actually in the textarea
     let promptContent = config.customPrompt;
-    if (config.promptPresetId) {
+    if (config.promptPresetId && !config.customPrompt) {
         const preset = getPromptPreset(config.promptPresetId);
         if (preset) promptContent = preset.prompt;
     }
@@ -54,14 +54,10 @@ export function renderStageConfig(
         else if (tokenEstimate.percentage > 50) tokenClass = 'warning';
     }
 
-    // Check if current content differs from selected preset
-    const promptDiffersFromPreset = config.promptPresetId
-        ? getPromptPreset(config.promptPresetId)?.prompt !== promptContent
-        : promptContent.trim().length > 0;
-
-    const schemaDiffersFromPreset = config.schemaPresetId
-        ? JSON.stringify(getSchemaPreset(config.schemaPresetId)?.schema, null, 2) !== schemaContent
-        : schemaContent.trim().length > 0;
+    // CHANGED: Save button is enabled if there's content to save
+    // For initial render, we can't know if user has edited - that's handled in updateSavePresetButtons
+    const hasPromptContent = promptContent.trim().length > 0;
+    const hasSchemaContent = schemaContent.trim().length > 0;
 
     const showFixButton = config.useStructuredOutput && schemaContent.trim() &&
         schemaValidation && ((schemaValidation.warnings?.length ?? 0) > 0 || !schemaValidation.valid);
@@ -77,7 +73,7 @@ export function renderStageConfig(
               id="${MODULE_NAME}_save_prompt_preset_btn"
               class="${MODULE_NAME}_icon_btn"
               title="Save as Preset"
-              ${!promptDiffersFromPreset ? 'disabled' : ''}
+              ${!hasPromptContent ? 'disabled' : ''}
             >
               <i class="fa-solid fa-floppy-disk"></i>
             </button>
@@ -118,7 +114,7 @@ export function renderStageConfig(
               id="${MODULE_NAME}_save_schema_preset_btn"
               class="${MODULE_NAME}_icon_btn"
               title="Save as Preset"
-              ${!schemaDiffersFromPreset || !schemaContent.trim() ? 'disabled' : ''}
+              ${!hasSchemaContent ? 'disabled' : ''}
             >
               <i class="fa-solid fa-floppy-disk"></i>
             </button>
@@ -219,10 +215,9 @@ export function updateStageConfigState(
     }
 
     // Update prompt textarea
-    // Update prompt textarea
     const promptTextarea = container.querySelector(`#${MODULE_NAME}_custom_prompt`) as HTMLTextAreaElement;
     if (promptTextarea) {
-    // Determine what content should be shown
+        // Determine what content should be shown
         let promptContent = config.customPrompt;
         if (config.promptPresetId && !config.customPrompt) {
             const preset = getPromptPreset(config.promptPresetId);
@@ -240,7 +235,7 @@ export function updateStageConfigState(
         // Update token count for prompt (debounced)
         const tokenCountEl = container.querySelector(`#${MODULE_NAME}_prompt_token_count`);
         if (tokenCountEl) {
-        // Use the actual textarea value for token count (what user sees)
+            // Use the actual textarea value for token count (what user sees)
             countTokens(promptTextarea.value, (tokens) => {
                 if (tokens !== null) {
                     tokenCountEl.textContent = `${tokens.toLocaleString()} tokens`;
@@ -250,7 +245,6 @@ export function updateStageConfigState(
             });
         }
     }
-
 
     // Update structured output toggle
     const structuredToggle = container.querySelector(`#${MODULE_NAME}_use_structured`) as HTMLInputElement;
@@ -280,12 +274,12 @@ export function updateStageConfigState(
     const schemaTextarea = container.querySelector(`#${MODULE_NAME}_custom_schema`) as HTMLTextAreaElement;
     if (schemaTextarea) {
         if (document.activeElement !== schemaTextarea) {
-            let schemaContent = config.customSchema;
+            let schemaDisplayContent = config.customSchema;
             if (config.schemaPresetId && !config.customSchema) {
-                schemaContent = resolvedSchemaContent ?? resolveSchemaContent(config);
+                schemaDisplayContent = resolvedSchemaContent ?? resolveSchemaContent(config);
             }
-            if (schemaTextarea.value !== schemaContent) {
-                schemaTextarea.value = schemaContent;
+            if (schemaTextarea.value !== schemaDisplayContent) {
+                schemaTextarea.value = schemaDisplayContent;
             }
         }
         schemaTextarea.disabled = isGenerating;
@@ -303,9 +297,12 @@ export function updateStageConfigState(
         previewBtn.disabled = isGenerating || !hasCharacter;
     }
 
-    // Update save preset buttons
-    updateSavePresetButtons(container, config, promptTextarea?.value || '', schemaContent, schemaValidation);
+    // CHANGED: Pass actual textarea values, not config values
+    const actualPromptValue = promptTextarea?.value || '';
+    const actualSchemaValue = schemaTextarea?.value || '';
+    updateSavePresetButtons(container, config, actualPromptValue, actualSchemaValue, schemaValidation);
 }
+
 
 // ============================================================================
 // PRIVATE HELPERS
@@ -382,34 +379,56 @@ function updateSchemaActionButtons(
 function updateSavePresetButtons(
     container: HTMLElement,
     config: StageConfig,
-    currentPrompt: string,
-    currentSchema: string,
+    currentPromptTextareaValue: string,  // CHANGED: renamed for clarity
+    currentSchemaTextareaValue: string,  // CHANGED: renamed for clarity
     schemaValidation?: SchemaValidationResult,
 ): void {
     const savePromptBtn = container.querySelector(`#${MODULE_NAME}_save_prompt_preset_btn`) as HTMLButtonElement;
     const saveSchemaBtn = container.querySelector(`#${MODULE_NAME}_save_schema_preset_btn`) as HTMLButtonElement;
 
     if (savePromptBtn) {
-        const presetPrompt = config.promptPresetId
-            ? getPromptPreset(config.promptPresetId)?.prompt || ''
-            : '';
+        const hasContent = currentPromptTextareaValue.trim().length > 0;
 
-        const hasContent = currentPrompt.trim().length > 0;
-        const isDifferent = currentPrompt !== presetPrompt;
-        savePromptBtn.disabled = !hasContent || (config.promptPresetId !== null && !isDifferent);
+        // CHANGED: Enable save if there's content AND either:
+        // 1. No preset selected (saving new custom content)
+        // 2. Content differs from the selected preset
+        let canSave = hasContent;
+
+        if (hasContent && config.promptPresetId) {
+            const preset = getPromptPreset(config.promptPresetId);
+            // Only disable if content exactly matches the preset
+            if (preset && currentPromptTextareaValue === preset.prompt) {
+                canSave = false;
+            }
+        }
+
+        savePromptBtn.disabled = !canSave;
     }
 
     if (saveSchemaBtn) {
-        const presetSchema = config.schemaPresetId
-            ? JSON.stringify(getSchemaPreset(config.schemaPresetId)?.schema, null, 2)
-            : '';
-
-        const hasContent = currentSchema.trim().length > 0;
-        const isDifferent = currentSchema !== presetSchema;
+        const hasContent = currentSchemaTextareaValue.trim().length > 0;
         const isValid = hasContent && schemaValidation ? schemaValidation.valid : false;
-        saveSchemaBtn.disabled = !hasContent || !isValid || (config.schemaPresetId !== null && !isDifferent);
+
+        // CHANGED: Enable save if there's valid content AND either:
+        // 1. No preset selected (saving new custom content)
+        // 2. Content differs from the selected preset
+        let canSave = hasContent && isValid;
+
+        if (canSave && config.schemaPresetId) {
+            const preset = getSchemaPreset(config.schemaPresetId);
+            if (preset) {
+                const presetJson = JSON.stringify(preset.schema, null, 2);
+                // Only disable if content exactly matches the preset
+                if (currentSchemaTextareaValue === presetJson) {
+                    canSave = false;
+                }
+            }
+        }
+
+        saveSchemaBtn.disabled = !canSave;
     }
 }
+
 
 function escapeHtml(text: string): string {
     const { DOMPurify } = SillyTavern.libs;
