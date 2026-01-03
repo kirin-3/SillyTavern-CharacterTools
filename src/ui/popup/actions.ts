@@ -75,6 +75,8 @@ import {
     getFullSystemPrompt,
     savePromptPreset,
     saveSchemaPreset,
+    getPromptPreset,
+    getSchemaPreset,
 } from '../../core/settings';
 import {
     validateSchema,
@@ -1294,9 +1296,21 @@ export function updateCustomPrompt(value: string): void {
     const state = getState();
     if (!state) return;
 
+    const config = state.pipeline.configs[state.activeStageView];
+
+    // Only clear preset ID if it's a builtin preset
+    // Custom presets can be edited in place
+    let shouldClearPreset = false;
+    if (config.promptPresetId) {
+        const preset = getPromptPreset(config.promptPresetId);
+        if (preset?.isBuiltin) {
+            shouldClearPreset = true;
+        }
+    }
+
     updatePipeline(p => pipelineUpdateStageConfig(p, state.activeStageView, {
         customPrompt: value,
-        promptPresetId: null,
+        promptPresetId: shouldClearPreset ? null : config.promptPresetId,
     }));
     updateTokenEstimate();
     updateStageConfigUI();
@@ -1306,9 +1320,20 @@ export function updateCustomSchema(value: string): void {
     const state = getState();
     if (!state) return;
 
+    const config = state.pipeline.configs[state.activeStageView];
+
+    // Only clear preset ID if it's a builtin preset
+    let shouldClearPreset = false;
+    if (config.schemaPresetId) {
+        const preset = getSchemaPreset(config.schemaPresetId);
+        if (preset?.isBuiltin) {
+            shouldClearPreset = true;
+        }
+    }
+
     updatePipeline(p => pipelineUpdateStageConfig(p, state.activeStageView, {
         customSchema: value,
-        schemaPresetId: null,
+        schemaPresetId: shouldClearPreset ? null : config.schemaPresetId,
     }));
 
     // Validate and cache
