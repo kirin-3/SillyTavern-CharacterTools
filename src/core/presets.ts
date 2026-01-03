@@ -90,6 +90,20 @@ export function resolveSchema(config: StageConfig): StructuredOutputSchema | nul
 }
 
 /**
+ * Resolve schema content as a JSON string for display/editing.
+ * Returns the preset's schema as formatted JSON, or the custom schema string.
+ */
+export function resolveSchemaContent(config: StageConfig): string {
+    if (config.schemaPresetId) {
+        const preset = getSchemaPreset(config.schemaPresetId);
+        if (preset) return JSON.stringify(preset.schema, null, 2);
+    }
+    return config.customSchema;
+}
+
+
+
+/**
  * Create a fresh StageConfig from defaults
  */
 export function createStageConfigFromDefaults(stage: StageName): StageConfig {

@@ -5,7 +5,7 @@ import { MODULE_NAME, STAGE_LABELS, STAGE_ICONS } from '../../constants';
 import { debugLog } from '../../debug';
 import { getApiInfo, isApiReady, getStageTokenCount } from '../../core/generator';
 import { getNextStage } from '../../core/pipeline';
-import { getSchemaPreset } from '../../core/settings';
+import { resolveSchemaContent } from '../../core/presets';
 import { getSchemaValidationFromCache, getState, getElement } from './state';
 import { updateCharacterSelectState } from './components/character-select';
 import { updatePipelineNavState } from './components/pipeline-nav';
@@ -14,7 +14,7 @@ import { updateResultsPanelState } from './components/results-panel';
 import { updateIterationHistoryState } from './components/iteration-history';
 import { renderSessionManager, updateSessionManagerState } from './components/session-manager';
 
-import type { StageConfig, SchemaValidationResult } from '../../types';
+import type { SchemaValidationResult } from '../../types';
 
 // ============================================================================
 // HELPERS
@@ -175,15 +175,6 @@ export function updateStageConfigUI(): void {
         schemaValidation,
         schemaContent,
     );
-}
-
-// Helper to resolve schema content from config
-function resolveSchemaContent(config: StageConfig): string {
-    if (config.schemaPresetId) {
-        const preset = getSchemaPreset(config.schemaPresetId);
-        if (preset) return JSON.stringify(preset.schema, null, 2);
-    }
-    return config.customSchema;
 }
 
 export function updateResultsPanel(): void {

@@ -5,6 +5,7 @@
 
 import { MODULE_NAME, STAGE_LABELS } from '../../../constants';
 import { getPromptPresets, getSchemaPresets, getPromptPreset, getSchemaPreset } from '../../../core/settings';
+import { resolveSchemaContent } from '../../../core/presets';
 import { countTokens } from '../../../core/tokens';
 import type { StageName, StageConfig, PromptPreset, SchemaPreset, SchemaValidationResult } from '../../../types';
 
@@ -30,7 +31,7 @@ export function renderStageConfig(
     }
 
     // Get current schema content
-    const schemaContent = resolveSchemaContentLocal(config);
+    const schemaContent = resolveSchemaContent(config);
 
     // Schema status display
     let schemaStatus = '';
@@ -265,7 +266,7 @@ export function updateStageConfigState(
     }
 
     // Use pre-resolved schema content if provided, otherwise resolve here
-    const schemaContent = resolvedSchemaContent ?? resolveSchemaContentLocal(config);
+    const schemaContent = resolvedSchemaContent ?? resolveSchemaContent(config);
 
     // Update schema textarea
     const schemaTextarea = container.querySelector(`#${MODULE_NAME}_custom_schema`) as HTMLTextAreaElement;
@@ -291,16 +292,6 @@ export function updateStageConfigState(
     // Update save preset buttons
     updateSavePresetButtons(container, config, promptTextarea?.value || '', schemaContent, schemaValidation);
 }
-
-// Local fallback for schema resolution (used by renderStageConfig)
-function resolveSchemaContentLocal(config: StageConfig): string {
-    if (config.schemaPresetId) {
-        const preset = getSchemaPreset(config.schemaPresetId);
-        if (preset) return JSON.stringify(preset.schema, null, 2);
-    }
-    return config.customSchema;
-}
-
 
 // ============================================================================
 // PRIVATE HELPERS

@@ -243,12 +243,7 @@ export function canRunStage(state: PipelineState, stage: StageName): { canRun: b
         return { canRun: false, reason: 'No character selected' };
     }
 
-    // Check if any fields are selected
-    const hasSelectedFields = Object.values(state.selectedFields).some(v =>
-        v === true || (Array.isArray(v) && v.length > 0),
-    );
-
-    if (!hasSelectedFields) {
+    if (!hasSelectedFields(state)) {
         return { canRun: false, reason: 'No fields selected' };
     }
 
@@ -276,6 +271,8 @@ export function canRunStage(state: PipelineState, stage: StageName): { canRun: b
     }
 }
 
+
+
 /**
  * Check if refinement can be run
  */
@@ -298,6 +295,17 @@ export function canRefine(state: PipelineState): { canRun: boolean; reason?: str
 
     return { canRun: true };
 }
+
+/**
+ * Check if any fields are selected for analysis
+ */
+export function hasSelectedFields(state: PipelineState): boolean {
+    return Object.values(state.selectedFields).some(v =>
+        v === true || (Array.isArray(v) && v.length > 0),
+    );
+}
+
+
 
 // ============================================================================
 // STAGE CONFIG MANAGEMENT
@@ -1058,12 +1066,7 @@ export function validatePipeline(state: PipelineState): PipelineValidation {
         errors.push('No stages selected');
     }
 
-    // Check if any fields are selected
-    const hasSelectedFields = Object.values(state.selectedFields).some(v =>
-        v === true || (Array.isArray(v) && v.length > 0),
-    );
-
-    if (!hasSelectedFields) {
+    if (!hasSelectedFields(state)) {
         errors.push('No fields selected');
     }
 
@@ -1084,10 +1087,8 @@ export function validatePipeline(state: PipelineState): PipelineValidation {
         }
     }
 
-    const { onlineStatus } = SillyTavern.getContext();
-    if (onlineStatus !== 'Valid' && onlineStatus !== 'Connected') {
-        errors.push('API is not connected');
-    }
+    // NOTE: API readiness is checked by isApiReady() in the action layer
+    // Do not duplicate that check here with different logic
 
     return {
         valid: errors.length === 0,
@@ -1095,6 +1096,7 @@ export function validatePipeline(state: PipelineState): PipelineValidation {
         warnings,
     };
 }
+
 
 /**
  * Validate refinement before running
@@ -1115,9 +1117,8 @@ export function validateRefinement(state: PipelineState): PipelineValidation {
         errors.push('Run analyze first to identify issues');
     }
 
-    // REMOVED: The redundant/broken API check
-    // isApiReady() is already called in runRefinement() before validateRefinement()
-    // No need to duplicate it here with different logic
+    // NOTE: API readiness is checked by isApiReady() in the action layer
+    // Do not duplicate that check here with different logic
 
     const lastSnapshot = state.iterationHistory.length > 0
         ? state.iterationHistory[state.iterationHistory.length - 1]
@@ -1137,6 +1138,8 @@ export function validateRefinement(state: PipelineState): PipelineValidation {
         warnings,
     };
 }
+
+
 
 
 // ============================================================================

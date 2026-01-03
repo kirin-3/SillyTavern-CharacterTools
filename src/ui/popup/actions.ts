@@ -45,6 +45,7 @@ import {
     failStage,
     canRunStage,
     canRefine,
+    hasSelectedFields,
     validateRefinement,
     buildStagePrompt,
     getStageSchema,
@@ -553,6 +554,7 @@ export async function runSingleStage(stage: StageName): Promise<void> {
     }
 }
 
+
 export async function runSelectedStages(): Promise<void> {
     const state = getState();
     if (!state || state.isGenerating || state.isRefining) return;
@@ -567,11 +569,7 @@ export async function runSelectedStages(): Promise<void> {
         return;
     }
 
-    const hasSelectedFields = Object.values(state.pipeline.selectedFields).some(v =>
-        v === true || (Array.isArray(v) && v.length > 0),
-    );
-
-    if (!hasSelectedFields) {
+    if (!hasSelectedFields(state.pipeline)) {
         toastr.error('No fields selected');
         return;
     }
@@ -609,6 +607,8 @@ export async function runSelectedStages(): Promise<void> {
     setTimeout(() => updateAllComponents(), 0);
 }
 
+
+
 export async function runAllStages(): Promise<void> {
     const state = getState();
     if (!state) return;
@@ -620,12 +620,13 @@ export async function runAllStages(): Promise<void> {
     await runSelectedStages();
 }
 
+
 export async function runRefinement(): Promise<void> {
-    debugLog('info', 'runRefinement CALLED', null);  // ADD THIS
+    debugLog('info', 'runRefinement CALLED', null);
     const state = getState();
     const el = getElement();
 
-    debugLog('info', 'runRefinement state check', {  // ADD THIS
+    debugLog('info', 'runRefinement state check', {
         hasState: !!state,
         hasEl: !!el,
         isGenerating: state?.isGenerating,
@@ -748,6 +749,7 @@ export async function runRefinement(): Promise<void> {
         setTimeout(() => updateAllComponents(), 0);
     }
 }
+
 
 
 export function cancelGeneration(): void {
@@ -1175,6 +1177,9 @@ export function scheduleAutoSave(): void {
     const state = getState();
     if (!state?.pipeline.character) return;
 
+    // Capture character reference at schedule time to prevent race conditions
+    const characterIndex = state.pipeline.characterIndex;
+
     markUnsavedChanges();
     updateSessionManager();
 
@@ -1184,7 +1189,18 @@ export function scheduleAutoSave(): void {
 
     autoSaveTimeout = setTimeout(async () => {
         const currentState = getState();
-        if (!currentState?.pipeline.character || !currentState.hasUnsavedChanges) return;
+
+        // Verify we're still on the same character
+        if (!currentState?.pipeline.character ||
+            currentState.pipeline.characterIndex !== characterIndex ||
+            !currentState.hasUnsavedChanges) {
+            debugLog('info', 'Auto-save skipped', {
+                reason: !currentState ? 'no state' :
+                    currentState.pipeline.characterIndex !== characterIndex ? 'character changed' :
+                        'no unsaved changes',
+            });
+            return;
+        }
 
         const character = currentState.pipeline.character;
 
@@ -1215,6 +1231,8 @@ export function scheduleAutoSave(): void {
         }
     }, 10000);
 }
+
+
 
 export function cancelAutoSave(): void {
     if (autoSaveTimeout) {

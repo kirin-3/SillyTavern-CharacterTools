@@ -589,16 +589,6 @@ async function generateWithCurrent(
         });
     }
 
-    // Set up abort handler
-    let abortHandler: (() => void) | null = null;
-    if (options.signal && typeof ctx.stopGeneration === 'function') {
-        abortHandler = () => {
-            debugLog('info', 'Calling stopGeneration', null);
-            ctx.stopGeneration();
-        };
-        options.signal.addEventListener('abort', abortHandler, { once: true });
-    }
-
     try {
         if (options.signal?.aborted) {
             throw new DOMException('Aborted', 'AbortError');
@@ -619,11 +609,6 @@ async function generateWithCurrent(
             responseLength: options.maxTokens ?? null,
             jsonSchema: options.jsonSchema ?? null,
         });
-
-        // Cleanup handler
-        if (abortHandler && options.signal) {
-            options.signal.removeEventListener('abort', abortHandler);
-        }
 
         if (options.signal?.aborted) {
             throw new DOMException('Aborted', 'AbortError');
@@ -646,10 +631,6 @@ async function generateWithCurrent(
             isStructured: !!options.jsonSchema,
         };
     } catch (err) {
-        // Cleanup handler on error
-        if (abortHandler && options.signal) {
-            options.signal.removeEventListener('abort', abortHandler);
-        }
         return handleGenerationError(err);
     } finally {
         // Restore reasoning_effort if we disabled it
@@ -660,6 +641,8 @@ async function generateWithCurrent(
         }
     }
 }
+
+
 
 /**
  * Generate using a connection profile via CMRS
@@ -761,6 +744,7 @@ async function generateWithProfile(
         return handleGenerationError(err);
     }
 }
+
 
 // ============================================================================
 // ERROR HANDLING
