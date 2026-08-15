@@ -9,6 +9,22 @@ import { resolveSchemaContent } from '../../../core/presets';
 import { countTokens } from '../../../core/tokens';
 import type { StageName, StageConfig, PromptPreset, SchemaPreset, SchemaValidationResult } from '../../../types';
 
+export type ConfigDisclosureSection = 'prompt' | 'schema' | 'fields';
+
+const disclosureState: Record<ConfigDisclosureSection, boolean> = {
+    prompt: false,
+    schema: false,
+    fields: true,
+};
+
+export function setConfigDisclosure(section: ConfigDisclosureSection, expanded: boolean): void {
+    disclosureState[section] = expanded;
+}
+
+export function isConfigDisclosureExpanded(section: ConfigDisclosureSection): boolean {
+    return disclosureState[section];
+}
+
 // ============================================================================
 // RENDER
 // ============================================================================
@@ -32,6 +48,12 @@ export function renderStageConfig(
 
     // Get current schema content
     const schemaContent = resolveSchemaContent(config);
+    const promptPresetName = config.promptPresetId
+        ? getPromptPreset(config.promptPresetId)?.name ?? 'Missing preset'
+        : 'Custom';
+    const schemaPresetName = config.schemaPresetId
+        ? getSchemaPreset(config.schemaPresetId)?.name ?? 'Missing preset'
+        : 'Custom';
 
     // Schema status display
     let schemaStatus = '';
@@ -65,9 +87,14 @@ export function renderStageConfig(
     return `
     <div class="${MODULE_NAME}_stage_config">
       <!-- Prompt Section -->
-      <div class="${MODULE_NAME}_config_group">
-        <div class="${MODULE_NAME}_config_header">
+      <details class="${MODULE_NAME}_config_group ${MODULE_NAME}_config_disclosure" data-config-disclosure="prompt" ${disclosureState.prompt ? 'open' : ''}>
+        <summary class="${MODULE_NAME}_config_summary">
           <span class="${MODULE_NAME}_config_label">Prompt</span>
+          <span class="${MODULE_NAME}_config_summary_meta"><span id="${MODULE_NAME}_prompt_preset_name">${escapeHtml(promptPresetName)}</span> • <span id="${MODULE_NAME}_prompt_token_count">-- tokens</span></span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </summary>
+        <div class="${MODULE_NAME}_config_disclosure_body">
+        <div class="${MODULE_NAME}_config_header">
           <div class="${MODULE_NAME}_config_header_actions">
             <button
               id="${MODULE_NAME}_save_prompt_preset_btn"
@@ -88,10 +115,8 @@ export function renderStageConfig(
           class="${MODULE_NAME}_prompt_textarea text_pole"
           placeholder="Enter your prompt for the ${STAGE_LABELS[stage]} stage..."
         >${escapeHtml(promptContent)}</textarea>
-        <div class="${MODULE_NAME}_config_footer">
-          <span class="${MODULE_NAME}_prompt_tokens" id="${MODULE_NAME}_prompt_token_count">-- tokens</span>
         </div>
-      </div>
+      </details>
 
       <!-- Structured Output Toggle -->
       <div class="${MODULE_NAME}_config_group">
@@ -106,9 +131,14 @@ export function renderStageConfig(
       </div>
 
       <!-- Schema Section -->
-      <div class="${MODULE_NAME}_schema_section ${config.useStructuredOutput ? '' : 'hidden'}">
-        <div class="${MODULE_NAME}_config_header">
+      <details class="${MODULE_NAME}_schema_section ${MODULE_NAME}_config_disclosure ${config.useStructuredOutput ? '' : 'hidden'}" data-config-disclosure="schema" ${disclosureState.schema ? 'open' : ''}>
+        <summary class="${MODULE_NAME}_config_summary">
           <span class="${MODULE_NAME}_config_label">JSON Schema</span>
+          <span class="${MODULE_NAME}_config_summary_meta"><span id="${MODULE_NAME}_schema_preset_name">${escapeHtml(schemaPresetName)}</span> • <span id="${MODULE_NAME}_schema_token_count">-- tokens</span></span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </summary>
+        <div class="${MODULE_NAME}_config_disclosure_body">
+        <div class="${MODULE_NAME}_config_header">
           <div class="${MODULE_NAME}_config_header_actions">
             <button
               id="${MODULE_NAME}_save_schema_preset_btn"
@@ -169,7 +199,8 @@ export function renderStageConfig(
             <span>Format</span>
           </button>
         </div>
-      </div>
+        </div>
+      </details>
 
       <!-- Actions -->
       <div class="${MODULE_NAME}_config_actions">
@@ -212,6 +243,12 @@ export function updateStageConfigState(
         promptSelect.innerHTML = `<option value="">Custom</option>${renderPresetOptions(promptPresets, config.promptPresetId)}`;
         promptSelect.value = config.promptPresetId || '';
         promptSelect.disabled = isGenerating;
+    }
+    const promptPresetName = container.querySelector(`#${MODULE_NAME}_prompt_preset_name`);
+    if (promptPresetName) {
+        promptPresetName.textContent = config.promptPresetId
+            ? getPromptPreset(config.promptPresetId)?.name ?? 'Missing preset'
+            : 'Custom';
     }
 
     // Update prompt textarea
@@ -269,6 +306,12 @@ export function updateStageConfigState(
 
     // Use pre-resolved schema content if provided, otherwise resolve here
     const schemaContent = resolvedSchemaContent ?? resolveSchemaContent(config);
+    const schemaPresetName = container.querySelector(`#${MODULE_NAME}_schema_preset_name`);
+    if (schemaPresetName) {
+        schemaPresetName.textContent = config.schemaPresetId
+            ? getSchemaPreset(config.schemaPresetId)?.name ?? 'Missing preset'
+            : 'Custom';
+    }
 
     // Update schema textarea
     const schemaTextarea = container.querySelector(`#${MODULE_NAME}_custom_schema`) as HTMLTextAreaElement;
@@ -283,6 +326,13 @@ export function updateStageConfigState(
             }
         }
         schemaTextarea.disabled = isGenerating;
+
+        const tokenCountEl = container.querySelector(`#${MODULE_NAME}_schema_token_count`);
+        if (tokenCountEl) {
+            countTokens(schemaTextarea.value, (tokens) => {
+                tokenCountEl.textContent = tokens === null ? '-- tokens' : `${tokens.toLocaleString()} tokens`;
+            });
+        }
     }
 
     // Update schema validation status

@@ -6,7 +6,7 @@ import { debugLog, logError } from '../../debug';
 import { getPromptPreset, getSchemaPreset } from '../../core/settings';
 import { updateStageConfig as pipelineUpdateStageConfig } from '../../core/pipeline';
 import { getState, getElement, setState, setElement, createInitialState, addCleanupFunction, resetAllCaches } from './state';
-import { buildPopupContent } from './html';
+import { buildPopupContent, toggleConfigRail } from './html';
 import { updateAllComponents } from './updaters';
 import { subscribeEvents, initGlobalListeners, cleanup } from './lifecycle';
 import * as actions from './actions';
@@ -14,7 +14,7 @@ import * as actions from './actions';
 // Components for initial render
 import { renderCharacterSelect } from './components/character-select';
 import { renderPipelineNav } from './components/pipeline-nav';
-import { renderStageConfig } from './components/stage-config';
+import { renderStageConfig, setConfigDisclosure } from './components/stage-config';
 import { renderResultsPanel } from './components/results-panel';
 import { renderIterationHistory } from './components/iteration-history';
 import { renderSessionManager } from './components/session-manager';
@@ -218,6 +218,13 @@ function initCharacterSectionEvents(container: HTMLElement): void {
 
     const charSection = container.querySelector(`#${MODULE_NAME}_character_select_container`);
     if (!charSection) return;
+
+    charSection.addEventListener('toggle', (e) => {
+        const target = e.target as HTMLDetailsElement;
+        if (target.matches('[data-field-selection-disclosure]')) {
+            setConfigDisclosure('fields', target.open);
+        }
+    }, true);
 
     const searchInput = charSection.querySelector(`#${MODULE_NAME}_char_search`) as HTMLInputElement;
     const dropdown = charSection.querySelector(`#${MODULE_NAME}_char_dropdown`) as HTMLElement;
@@ -478,6 +485,15 @@ function initStageConfigEvents(container: HTMLElement): void {
     const stageSection = container.querySelector(`#${MODULE_NAME}_stage_config_container`);
     if (!stageSection) return;
 
+    stageSection.querySelectorAll<HTMLDetailsElement>('[data-config-disclosure]').forEach(details => {
+        details.addEventListener('toggle', () => {
+            const section = details.dataset.configDisclosure;
+            if (section === 'prompt' || section === 'schema') {
+                setConfigDisclosure(section, details.open);
+            }
+        });
+    });
+
     // Select changes
     stageSection.addEventListener('change', (e) => {
         const target = e.target as HTMLSelectElement | HTMLInputElement;
@@ -706,6 +722,18 @@ function initIterationHistoryEvents(container: HTMLElement): void {
 // ============================================================================
 
 function initHeaderEvents(container: HTMLElement): void {
+    const collapseBtn = container.querySelector(`#${MODULE_NAME}_config_collapse_btn`) as HTMLButtonElement | null;
+    collapseBtn?.addEventListener('click', () => {
+        const collapsed = toggleConfigRail();
+        const main = container.querySelector(`.${MODULE_NAME}_main_content`);
+        main?.classList.toggle(`${MODULE_NAME}_config_collapsed`, collapsed);
+        collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+        collapseBtn.setAttribute('aria-label', collapsed ? 'Expand configuration' : 'Collapse configuration');
+        collapseBtn.title = collapsed ? 'Expand configuration' : 'Collapse configuration';
+        const icon = collapseBtn.querySelector('i');
+        if (icon) icon.className = `fa-solid ${collapsed ? 'fa-angles-right' : 'fa-angles-left'}`;
+    });
+
     // Settings button
     const settingsBtn = container.querySelector(`#${MODULE_NAME}_settings_btn`);
     settingsBtn?.addEventListener('click', () => {

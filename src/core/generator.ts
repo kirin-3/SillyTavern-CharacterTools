@@ -21,6 +21,7 @@ import type { TokenEstimate } from './tokens';
 import { buildStagePrompt, getStageSchema } from './pipeline';
 import { parseStructuredResponse } from './response-parser';
 import { unescapeSTMacros } from './macros';
+import { buildStructuredOutputGuidance } from './schema';
 
 // ============================================================================
 // TYPES
@@ -613,7 +614,7 @@ export async function runStageGeneration(
             userPrompt,
             result.response,
             malformedResponseRetryReason,
-            jsonSchema.value.required ?? [],
+            jsonSchema,
         );
 
         debugLog('info', 'Structured response was malformed; re-asking once', {
@@ -660,17 +661,18 @@ export async function runStageGeneration(
     return result;
 }
 
-function buildMalformedResponseRetryPrompt(
+/** Exported for deterministic retry-prompt regression tests. */
+export function buildMalformedResponseRetryPrompt(
     originalPrompt: string,
     malformedResponse: string,
     reason: string,
-    requiredKeys: readonly string[],
+    schema: StructuredOutputSchema,
 ): string {
     const excerpt = malformedResponse.slice(0, MALFORMED_RESPONSE_EXCERPT_LENGTH);
     const truncationNote = malformedResponse.length > excerpt.length ? '\n[excerpt truncated]' : '';
-    const keyList = requiredKeys.length > 0 ? requiredKeys.join(', ') : '(none specified)';
+    const guidance = buildStructuredOutputGuidance(schema);
 
-    return `${originalPrompt}\n\nCorrect the previous response. It could not be parsed as structured JSON: ${reason}\nRequired top-level keys: ${keyList}\nReturn the JSON object alone with no markdown fences, reasoning, or surrounding prose.\nMalformed response excerpt:\n${excerpt}${truncationNote}`;
+    return `${originalPrompt}\n\nCorrect the previous response. It could not be parsed as structured JSON: ${reason}\nReturn the JSON object alone with no markdown fences, reasoning, or surrounding prose.\nMalformed response excerpt:\n${excerpt}${truncationNote}\n\n${guidance}`;
 }
 
 // ============================================================================

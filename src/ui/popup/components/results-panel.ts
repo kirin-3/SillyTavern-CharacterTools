@@ -252,8 +252,8 @@ function renderFooterActions(
         <span>Apply Selected Fields</span>
       </button>
     `);
-        } else if (!result.isStructured || review.error) {
-            actions.push(`<span class="${MODULE_NAME}_verdict_notice">Apply unavailable: rewrite output was not parsed. Copy and export remain available.</span>`);
+        } else {
+            actions.push(`<span class="${MODULE_NAME}_verdict_notice">${renderApplyUnavailableReason(result, review)}</span>`);
         }
 
         if (canRevertLastCharacterWrite()) {
@@ -323,6 +323,28 @@ function renderFooterActions(
     }
 
     return `<div class="${MODULE_NAME}_footer_actions">${actions.join('')}</div>`;
+}
+
+/** Pure message builder exported for non-DOM regression tests. */
+export function renderApplyUnavailableReason(
+    result: StageResult,
+    review: ReturnType<typeof buildRewriteReview>,
+): string {
+    const copyFallback = ' Copy and export remain available.';
+    if (!result.isStructured || review.error) {
+        const error = review.error ?? result.structuredFallbackReason ?? 'Unknown parse error';
+        return `Apply unavailable: rewrite output could not be parsed (${escapeAttribute(error)}).${copyFallback}`;
+    }
+    if (review.entries.length === 0) {
+        return `Apply unavailable: the response contains no selected rewrite entries.${copyFallback}`;
+    }
+    if (review.entries.every(entry => !entry.writable)) {
+        return `Apply unavailable: all proposed entries are lorebook-only and cannot be written.${copyFallback}`;
+    }
+    if (review.entries.every(entry => entry.unchanged)) {
+        return `Apply unavailable: all proposed entries are unchanged.${copyFallback}`;
+    }
+    return `Apply unavailable: every proposed entry is either unwritable or unchanged.${copyFallback}`;
 }
 
 function escapeAttribute(value: string): string {

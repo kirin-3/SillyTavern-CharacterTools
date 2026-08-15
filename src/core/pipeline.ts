@@ -22,6 +22,7 @@ import { debugLog, logError } from '../debug';
 import { getPopulatedFields, buildCharacterSummaryFromSelection } from './character';
 import { extractVerdictFromResponse } from './response-parser';
 import { unescapeSTMacros } from './macros';
+import { buildStructuredOutputGuidance } from './schema';
 
 // ============================================================================
 // PIPELINE STATE FACTORY
@@ -786,14 +787,11 @@ export function buildStagePrompt(state: PipelineState, stage: StageName): string
     }
     parts.push(processedUserPrompt);
 
-    const schema = !isRefinement && state.configs[stage].useStructuredOutput
+    const schema = state.configs[stage].useStructuredOutput
         ? getStageSchema(state, stage)
         : null;
     if (schema) {
-        const requiredKeys = schema.value.required?.join(', ') || '(none)';
-        parts.push('\n\n# Required Structured Output\n\n');
-        parts.push(`Return one JSON object matching this schema. Required root keys: ${requiredKeys}.\n\n`);
-        parts.push(`\`\`\`json\n${JSON.stringify(schema.value, null, 2)}\n\`\`\``);
+        parts.push(`\n\n${buildStructuredOutputGuidance(schema)}`);
     }
 
     return parts.join('');

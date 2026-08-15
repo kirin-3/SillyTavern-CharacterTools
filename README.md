@@ -73,7 +73,7 @@ Don't want to rewrite the whole card? Select only the fields you care about. Wor
 
 ### 📊 Structured Output Support
 
-Structured output is enabled by default for Score, Rewrite, and Analyze, with a built-in schema for every stage. Responses pass through reasoning-block removal, fence repair, balanced JSON extraction, and required-key validation. A provider that rejects schemas is retried once without the schema and the result is marked as an unstructured fallback.
+Structured output is enabled by default for Score, Rewrite, and Analyze, with a built-in schema for every stage. Every structured prompt ends with compact guidance derived from the active schema: required root keys, an example instance, and allowed enum values. Responses pass through reasoning-block removal, fence repair, balanced JSON extraction, and required-key validation. A provider that rejects schemas is retried once without the schema; malformed structured content is re-asked once with the correct guidance placed last.
 
 **Don't know JSON Schema?** No problem. Click **Generate** and describe what you want in plain English:
 
@@ -158,6 +158,9 @@ The pipeline has three stages: **Score → Rewrite → Analyze**
 - Check/uncheck stages to include them
 - Click a stage button to view/edit its configuration
 - Each stage has its own prompt and optional JSON schema
+- Prompt and schema editors start collapsed; expand either without losing unsaved text
+- Collapsed sections keep the active preset and token count visible
+- Collapse the configuration rail when you want the results area to take over
 
 ![Pipeline Nav Screenshot Placeholder]
 <!-- SCREENSHOT: Pipeline navigation showing all three stages with checkboxes, one stage active -->

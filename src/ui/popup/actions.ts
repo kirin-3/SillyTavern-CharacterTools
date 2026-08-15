@@ -768,6 +768,8 @@ export async function runRefinement(): Promise<void> {
         // Refinement is just a rewrite stage run when isRefining=true
         // buildStagePrompt handles the refinement prompt internally
         const currentState = getState()!;
+        const promptUsed = buildStagePrompt(currentState.pipeline, 'rewrite') || '';
+        const schemaUsed = getStageSchema(currentState.pipeline, 'rewrite');
         const result = await runStageGeneration(
             currentState.pipeline,
             'rewrite',
@@ -781,9 +783,12 @@ export async function runRefinement(): Promise<void> {
             updatePipeline(p => completeRefinement(p, {
                 response: result.response,
                 reasoning: result.reasoning,
-                isStructured: false,
-                promptUsed: '[Refinement prompt]',
-                schemaUsed: null,
+                isStructured: result.isStructured,
+                structuredFallbackReason: result.structuredFallbackReason,
+                malformedResponseRetried: result.malformedResponseRetried,
+                malformedResponseRetryReason: result.malformedResponseRetryReason,
+                promptUsed,
+                schemaUsed,
             }));
 
             toastr.success(`Refinement #${getState()!.pipeline.iterationCount} complete`);

@@ -182,6 +182,10 @@ export function updateResultsPanel(): void {
     const state = getState();
     if (!el || !state) return;
 
+    const hasResults = Object.values(state.pipeline.results).some(Boolean);
+    el.querySelector(`.${MODULE_NAME}_main_content`)
+        ?.classList.toggle(`${MODULE_NAME}_has_results`, hasResults);
+
     const container = el.querySelector(`#${MODULE_NAME}_results_container`);
     if (container) {
         updateResultsPanelState(

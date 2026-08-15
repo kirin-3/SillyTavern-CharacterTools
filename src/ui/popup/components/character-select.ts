@@ -5,6 +5,7 @@
 
 import { MODULE_NAME } from '../../../constants';
 import { getPopulatedFields, replaceCharMacroForDisplay } from '../../../core/character';
+import { isConfigDisclosureExpanded } from './stage-config';
 import type { Character, CharacterBook, PopulatedField, FieldSelection } from '../../../types';
 
 // ============================================================================
@@ -82,7 +83,7 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
         </button>
       </div>
 
-      <details class="${MODULE_NAME}_char_fields_details" open>
+      <details class="${MODULE_NAME}_char_fields_details" data-field-selection-disclosure ${isConfigDisclosureExpanded('fields') ? 'open' : ''}>
         <summary class="${MODULE_NAME}_char_fields_summary">
           <span>${fields.length} character fields</span>
           <i class="fa-solid fa-chevron-down"></i>

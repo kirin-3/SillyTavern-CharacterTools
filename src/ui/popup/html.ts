@@ -4,6 +4,13 @@
 import { MODULE_NAME, STAGE_ICONS } from '../../constants';
 import { getApiInfo } from '../../core/generator';
 
+let configRailCollapsed = false;
+
+export function toggleConfigRail(): boolean {
+    configRailCollapsed = !configRailCollapsed;
+    return configRailCollapsed;
+}
+
 // ============================================================================
 // HELPERS
 // ============================================================================
@@ -58,9 +65,22 @@ export function buildPopupContent(): string {
       </div>
 
       <!-- Main Content -->
-      <div class="${MODULE_NAME}_main_content">
+      <div class="${MODULE_NAME}_main_content ${configRailCollapsed ? `${MODULE_NAME}_config_collapsed` : ''}">
         <!-- Left Column -->
         <div class="${MODULE_NAME}_left_column">
+          <div class="${MODULE_NAME}_rail_toolbar">
+            <span>Configuration</span>
+            <button
+              type="button"
+              id="${MODULE_NAME}_config_collapse_btn"
+              class="${MODULE_NAME}_icon_btn"
+              aria-label="${configRailCollapsed ? 'Expand configuration' : 'Collapse configuration'}"
+              title="${configRailCollapsed ? 'Expand configuration' : 'Collapse configuration'}"
+              aria-expanded="${configRailCollapsed ? 'false' : 'true'}"
+            >
+              <i class="fa-solid ${configRailCollapsed ? 'fa-angles-right' : 'fa-angles-left'}"></i>
+            </button>
+          </div>
           <div class="${MODULE_NAME}_section" id="${MODULE_NAME}_character_section">
             <div class="${MODULE_NAME}_section_header">
               <i class="fa-solid fa-user"></i>

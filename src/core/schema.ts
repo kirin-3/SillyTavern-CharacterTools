@@ -770,6 +770,96 @@ export function formatSchema(schema: StructuredOutputSchema | null): string {
     return JSON.stringify(schema, null, 2);
 }
 
+export interface SchemaEnumConstraint {
+    path: string;
+    values: unknown[];
+}
+
+/**
+ * Build a deterministic, minimal example value for prompt-level shape guidance.
+ * Object examples include required properties only; arrays contain one example item.
+ */
+export function buildSchemaExample(schema: StructuredOutputSchema): unknown {
+    return buildSchemaNodeExample(schema.value);
+}
+
+function buildSchemaNodeExample(node: JsonSchemaValue): unknown {
+    if (node.const !== undefined) return node.const;
+    if (node.enum && node.enum.length > 0) return node.enum[0];
+    if (node.default !== undefined) return node.default;
+    if (node.anyOf?.length) return buildSchemaNodeExample(node.anyOf[0]);
+    if (node.oneOf?.length) return buildSchemaNodeExample(node.oneOf[0]);
+    if (node.allOf?.length) return buildSchemaNodeExample(node.allOf[0]);
+
+    switch (node.type) {
+        case 'object': {
+            const properties = node.properties ?? {};
+            const required = node.required ?? [];
+            return Object.fromEntries(required
+                .filter(key => properties[key] !== undefined)
+                .map(key => [key, buildSchemaNodeExample(properties[key])]));
+        }
+        case 'array': {
+            const item = Array.isArray(node.items) ? node.items[0] : node.items;
+            return item ? [buildSchemaNodeExample(item)] : [];
+        }
+        case 'number':
+        case 'integer':
+            return 0;
+        case 'boolean':
+            return false;
+        case 'string':
+        default:
+            return '<replacement text>';
+    }
+}
+
+/** Collect enum constraints using dotted property paths and [] for array items. */
+export function collectSchemaEnumConstraints(schema: StructuredOutputSchema): SchemaEnumConstraint[] {
+    const constraints: SchemaEnumConstraint[] = [];
+
+    function walk(node: JsonSchemaValue, path: string): void {
+        if (node.enum?.length) {
+            constraints.push({ path: path || '(root)', values: [...node.enum] });
+        }
+        for (const [key, property] of Object.entries(node.properties ?? {})) {
+            walk(property, path ? `${path}.${key}` : key);
+        }
+        const item = Array.isArray(node.items) ? node.items[0] : node.items;
+        if (item) walk(item, `${path}[]`);
+    }
+
+    walk(schema.value, '');
+    return constraints;
+}
+
+/** Build compact, provider-independent output guidance from the active schema. */
+export function buildStructuredOutputGuidance(schema: StructuredOutputSchema): string {
+    const requiredKeys = schema.value.required ?? [];
+    const keyList = requiredKeys.length > 0 ? requiredKeys.join(', ') : '(none)';
+    const allowedKeys = Object.keys(schema.value.properties ?? {});
+    const allowedKeyList = allowedKeys.length > 0 ? allowedKeys.join(', ') : '(none)';
+    const enums = collectSchemaEnumConstraints(schema);
+    const lines = [
+        '# Required Structured Output',
+        '',
+        `Return one JSON object. Required root keys: ${keyList}.`,
+        `Only these root keys may appear: ${allowedKeyList}.`,
+        '',
+        'Example instance:',
+        '```json',
+        JSON.stringify(buildSchemaExample(schema), null, 2),
+        '```',
+    ];
+    if (enums.length > 0) {
+        lines.push('', 'Allowed enum values:');
+        for (const constraint of enums) {
+            lines.push(`- ${constraint.path}: ${constraint.values.map(value => JSON.stringify(value)).join(', ')}`);
+        }
+    }
+    return lines.join('\n');
+}
+
 /**
  * Attempts to parse a structured output response.
  * Returns the parsed object or null if parsing fails.
