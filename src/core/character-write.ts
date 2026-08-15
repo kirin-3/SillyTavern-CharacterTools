@@ -67,7 +67,12 @@ function requireMatchingCharacter(target: Character): Character {
     return current;
 }
 
-function buildPatch(character: Character, entries: RewriteReviewEntry[], useOriginal: boolean): CharacterPatch {
+/** Test-only export for verifying card patch construction without issuing writes. */
+export function buildPatch(
+    character: Character,
+    entries: RewriteReviewEntry[],
+    useOriginal: boolean,
+): CharacterPatch {
     const patch: CharacterPatch = { avatar: character.avatar };
     const data: Record<string, unknown> = {};
     const topLevel = new Set(['description', 'personality', 'first_mes', 'scenario', 'mes_example']);

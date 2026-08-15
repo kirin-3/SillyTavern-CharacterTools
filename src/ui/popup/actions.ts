@@ -554,6 +554,8 @@ export async function runSingleStage(stage: StageName): Promise<void> {
                 reasoning: result.reasoning,
                 isStructured: result.isStructured,
                 structuredFallbackReason: result.structuredFallbackReason,
+                malformedResponseRetried: result.malformedResponseRetried,
+                malformedResponseRetryReason: result.malformedResponseRetryReason,
                 promptUsed,
                 schemaUsed,
             }));

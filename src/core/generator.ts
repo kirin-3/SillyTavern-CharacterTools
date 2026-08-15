@@ -47,6 +47,8 @@ interface ExtractedData {
     reasoning: string;
 }
 
+const MALFORMED_RESPONSE_EXCERPT_LENGTH = 1000;
+
 // ============================================================================
 // PROFILE DISCOVERY
 // ============================================================================
@@ -593,12 +595,82 @@ export async function runStageGeneration(
         };
     }
 
-    // Validate structured response if needed
+    // Validate structured response if needed, then re-ask once when the provider
+    // accepted the schema but returned content the repair chain cannot recover.
     if (result.success && jsonSchema && !result.structuredFallbackReason) {
-        return validateStructuredResponse(result, jsonSchema);
+        const validated = validateStructuredResponse(result, jsonSchema);
+        if (!validated.success || validated.isStructured) {
+            return validated;
+        }
+
+        if (signal?.aborted) {
+            return { success: false, error: 'Generation cancelled' };
+        }
+
+        const malformedResponseRetryReason = validated.structuredFallbackReason ??
+            'Structured response could not be parsed';
+        const retryPrompt = buildMalformedResponseRetryPrompt(
+            userPrompt,
+            result.response,
+            malformedResponseRetryReason,
+            jsonSchema.value.required ?? [],
+        );
+
+        debugLog('info', 'Structured response was malformed; re-asking once', {
+            stage,
+            reason: malformedResponseRetryReason,
+            requiredKeys: jsonSchema.value.required ?? [],
+        });
+
+        let retryResult: GenerationResult;
+        if (settings.generationSettings.mode === 'current') {
+            retryResult = await generateWithCurrent(
+                retryPrompt,
+                systemPrompt,
+                { maxTokens, jsonSchema, signal },
+            );
+        } else {
+            retryResult = await generateWithProfile(
+                settings.generationSettings.profileId!,
+                [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: retryPrompt },
+                ],
+                {
+                    maxTokens,
+                    jsonSchema,
+                    signal,
+                    temperature: stage === 'rewrite' ? undefined : 0.2,
+                },
+            );
+        }
+
+        if (!retryResult.success) return retryResult;
+
+        retryResult = {
+            ...retryResult,
+            response: unescapeSTMacros(retryResult.response),
+            reasoning: retryResult.reasoning ? unescapeSTMacros(retryResult.reasoning) : undefined,
+            malformedResponseRetried: true,
+            malformedResponseRetryReason,
+        };
+        return validateStructuredResponse(retryResult, jsonSchema);
     }
 
     return result;
+}
+
+function buildMalformedResponseRetryPrompt(
+    originalPrompt: string,
+    malformedResponse: string,
+    reason: string,
+    requiredKeys: readonly string[],
+): string {
+    const excerpt = malformedResponse.slice(0, MALFORMED_RESPONSE_EXCERPT_LENGTH);
+    const truncationNote = malformedResponse.length > excerpt.length ? '\n[excerpt truncated]' : '';
+    const keyList = requiredKeys.length > 0 ? requiredKeys.join(', ') : '(none specified)';
+
+    return `${originalPrompt}\n\nCorrect the previous response. It could not be parsed as structured JSON: ${reason}\nRequired top-level keys: ${keyList}\nReturn the JSON object alone with no markdown fences, reasoning, or surrounding prose.\nMalformed response excerpt:\n${excerpt}${truncationNote}`;
 }
 
 // ============================================================================

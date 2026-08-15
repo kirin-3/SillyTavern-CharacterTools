@@ -16,6 +16,7 @@ export type StructuredParseResult =
     };
 
 const REASONING_TAGS = ['think', 'thinking', 'reasoning'] as const;
+const MAX_JSON_CANDIDATES = 16;
 
 /** Remove inline model reasoning while retaining the answer content. */
 export function stripReasoningBlocks(response: string): string {
@@ -50,16 +51,13 @@ export function stripReasoningBlocks(response: string): string {
 /** Remove JSON or bare Markdown fence markers without changing their contents. */
 export function stripCodeFences(response: string): string {
     return response
-        .replace(/```(?:json)?\s*/gi, '')
-        .replace(/```/g, '')
+        .replace(/^\s*```(?:json)?[^\S\r\n]*(?:\r?\n)?/i, '')
+        .replace(/(?:\r?\n)?[^\S\r\n]*```\s*$/, '')
         .trim();
 }
 
-/**
- * Extract the first outermost balanced JSON object. Braces inside JSON strings
- * and escaped quote characters do not affect balancing.
- */
-export function extractBalancedJson(response: string): string | null {
+/** Yield outermost balanced JSON objects in document order. */
+function* iterateBalancedJson(response: string): Generator<string> {
     let start = -1;
     let depth = 0;
     let inString = false;
@@ -72,6 +70,8 @@ export function extractBalancedJson(response: string): string | null {
             if (character === '{') {
                 start = index;
                 depth = 1;
+                inString = false;
+                escaped = false;
             }
             continue;
         }
@@ -94,12 +94,19 @@ export function extractBalancedJson(response: string): string | null {
         } else if (character === '}') {
             depth--;
             if (depth === 0) {
-                return response.slice(start, index + 1);
+                yield response.slice(start, index + 1);
+                start = -1;
             }
         }
     }
+}
 
-    return null;
+/**
+ * Extract the first outermost balanced JSON object. Braces inside JSON strings
+ * and escaped quote characters do not affect balancing.
+ */
+export function extractBalancedJson(response: string): string | null {
+    return iterateBalancedJson(response).next().value ?? null;
 }
 
 /** Parse a provider response using the shared reasoning/fence/JSON repair chain. */
@@ -109,51 +116,80 @@ export function parseStructuredResponse(
 ): StructuredParseResult {
     const original = response.trim();
     const withoutReasoning = stripReasoningBlocks(original);
-    const withoutFences = stripCodeFences(withoutReasoning);
-    const extracted = extractBalancedJson(withoutFences);
-    const candidate = extracted ?? withoutFences;
+    let candidateCount = 0;
+    let foundCandidate = false;
+    let reachedCandidateLimit = false;
+    let bestMissingKeys: string[] | null = null;
+    let lastParseError = 'No balanced JSON object found';
 
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(candidate);
-    } catch (error) {
+    const tryCandidates = (text: string): StructuredParseResult | null => {
+        for (const candidate of iterateBalancedJson(text)) {
+            foundCandidate = true;
+            if (candidateCount >= MAX_JSON_CANDIDATES) {
+                reachedCandidateLimit = true;
+                break;
+            }
+            candidateCount++;
+
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(candidate);
+            } catch (error) {
+                lastParseError = error instanceof Error ? error.message : 'Invalid JSON response';
+                continue;
+            }
+
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                lastParseError = 'Structured response must be a JSON object';
+                continue;
+            }
+
+            const data = parsed as Record<string, unknown>;
+            const missingKeys = requiredKeys.filter(key => !(key in data));
+            if (missingKeys.length > 0) {
+                if (bestMissingKeys === null || missingKeys.length < bestMissingKeys.length) {
+                    bestMissingKeys = missingKeys;
+                }
+                continue;
+            }
+
+            return {
+                status: candidate === original ? 'parsed' : 'repaired',
+                data,
+                text: candidate,
+                missingKeys: [],
+            };
+        }
+        return null;
+    };
+
+    let result = tryCandidates(withoutReasoning);
+    if (result) return result;
+
+    if (!foundCandidate) {
+        result = tryCandidates(stripCodeFences(withoutReasoning));
+        if (result) return result;
+    }
+
+    const diagnosticMissingKeys = bestMissingKeys as string[] | null;
+    if (diagnosticMissingKeys) {
         return {
             status: 'unparseable',
             data: null,
             text: response,
-            missingKeys: [],
-            error: error instanceof Error ? error.message : 'Invalid JSON response',
+            missingKeys: diagnosticMissingKeys,
+            error: `Missing required fields: ${diagnosticMissingKeys.join(', ')}`,
         };
     }
 
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return {
-            status: 'unparseable',
-            data: null,
-            text: response,
-            missingKeys: [],
-            error: 'Structured response must be a JSON object',
-        };
-    }
-
-    const data = parsed as Record<string, unknown>;
-    const missingKeys = requiredKeys.filter(key => !(key in data));
-    if (missingKeys.length > 0) {
-        return {
-            status: 'unparseable',
-            data: null,
-            text: response,
-            missingKeys,
-            error: `Missing required fields: ${missingKeys.join(', ')}`,
-        };
-    }
-
-    const repaired = candidate !== original;
     return {
-        status: repaired ? 'repaired' : 'parsed',
-        data,
-        text: candidate,
+        status: 'unparseable',
+        data: null,
+        text: response,
         missingKeys: [],
+        error: reachedCandidateLimit
+            ? `No valid structured response found in the first ${MAX_JSON_CANDIDATES} JSON objects`
+            : lastParseError,
     };
 }
 

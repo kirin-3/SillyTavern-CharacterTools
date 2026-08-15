@@ -196,6 +196,8 @@ export type GenerationResult =
         reasoning?: string;
         isStructured: boolean;
         structuredFallbackReason?: string;
+        malformedResponseRetried?: boolean;
+        malformedResponseRetryReason?: string;
     }
     | { success: false; error: string };
 
@@ -323,6 +325,8 @@ export interface StageResult {
     reasoning?: string;  // NEW: reasoning/thinking content if available
     isStructured: boolean;
     structuredFallbackReason?: string;
+    malformedResponseRetried?: boolean;
+    malformedResponseRetryReason?: string;
     promptUsed: string;
     schemaUsed: StructuredOutputSchema | null;
     timestamp: number;

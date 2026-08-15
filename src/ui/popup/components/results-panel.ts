@@ -91,6 +91,9 @@ function renderResult(stage: StageName, result: StageResult, pipeline?: Pipeline
     const fallbackBadge = result.structuredFallbackReason
         ? `<span class="${MODULE_NAME}_badge" title="${escapeAttribute(result.structuredFallbackReason)}"><i class="fa-solid fa-triangle-exclamation"></i> Unstructured fallback</span>`
         : '';
+    const retryBadge = result.malformedResponseRetried
+        ? `<span class="${MODULE_NAME}_badge" title="${escapeAttribute(result.malformedResponseRetryReason ?? 'Malformed structured response')}"><i class="fa-solid fa-rotate"></i> Re-asked once</span>`
+        : '';
 
     // Extract verdict if this is an analyze result
     let verdictBadge = '';
@@ -107,6 +110,7 @@ function renderResult(stage: StageName, result: StageResult, pipeline?: Pipeline
           <span class="${MODULE_NAME}_badge">${STAGE_LABELS[stage]}</span>
           ${verdictBadge}
           ${fallbackBadge}
+          ${retryBadge}
           <span class="${MODULE_NAME}_results_time">${timestamp}</span>
           ${result.locked ? `<span class="${MODULE_NAME}_badge ${MODULE_NAME}_badge_locked"><i class="fa-solid fa-lock"></i> Locked</span>` : ''}
         </div>
