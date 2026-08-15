@@ -6,6 +6,14 @@ import { CHARACTER_FIELDS } from '../constants';
 import { getTokenCount, getTokenCountsKeyed, getContentTokenEstimate } from './tokens';
 import type { Character, CharacterField, PopulatedField, DepthPrompt, CharacterBook, FieldSelection } from '../types';
 import type { TokenEstimate } from './tokens';
+export {
+    escapeSTMacros,
+    unescapeSTMacros,
+    findUnrevertedMacroSentinels,
+    restoreCharacterNameMacro,
+    prepareContentForCard,
+} from './macros';
+import { escapeSTMacros } from './macros';
 
 // ============================================================================
 // FIELD VALUE EXTRACTION
@@ -109,17 +117,15 @@ function formatObjectField(value: unknown, key: string): string {
             lines.push(`Entries: ${book.entries.length}`, '');
 
             for (const entry of book.entries) {
-                const status = entry.enabled ? '✓' : '✗';
-                const keys = entry.keys.slice(0, 5).join(', ');
-                const keysSuffix = entry.keys.length > 5 ? ` (+${entry.keys.length - 5} more)` : '';
                 const comment = entry.comment || `Entry ${entry.id}`;
-                lines.push(`${status} ${comment}: [${keys}${keysSuffix}]`);
-
-                if (entry.content) {
-                    const preview = entry.content.trim().substring(0, 100);
-                    const suffix = entry.content.length > 100 ? '...' : '';
-                    lines.push(`   ${preview}${suffix}`);
+                lines.push(`## ${comment}`);
+                lines.push(`Enabled: ${entry.enabled ? 'yes' : 'no'}`);
+                lines.push(`Keys: ${entry.keys.join(', ') || '(none)'}`);
+                if (entry.secondary_keys?.length) {
+                    lines.push(`Secondary keys: ${entry.secondary_keys.join(', ')}`);
                 }
+                lines.push('Content:');
+                lines.push(entry.content?.trim() || '(empty)', '');
             }
 
             return lines.join('\n');
@@ -229,28 +235,69 @@ export async function getFieldTokenCounts(char: Character): Promise<Map<string, 
     return counts;
 }
 
-// Add this function to escape ST macros before they hit generateRaw
-// ============================================================================
-// MACRO HANDLING
-// ============================================================================
+export interface LorebookOmission {
+    index: number;
+    label: string;
+    enabled: boolean;
+    estimatedTokens: number;
+}
 
-/**
- * Escape ST macros in text so they pass through generateRaw unchanged.
- * We handle {{char}} ourselves; {{user}} should pass through as literal text.
- */
-export function escapeSTMacros(text: string, charName: string): string {
-    // First, replace {{char}} with the actual character name (the one we're analyzing)
-    let result = text.replace(/\{\{char\}\}/gi, charName);
+export interface LorebookBudgetPlan {
+    selectedIndices: number[];
+    omitted: LorebookOmission[];
+    estimatedTokensRemoved: number;
+}
 
-    // Escape {{user}} so ST doesn't replace it with the active persona
-    // Use a zero-width space to break the macro pattern
-    result = result.replace(/\{\{user\}\}/gi, '{{u\u200Bser}}');
+/** Recommend explicit lorebook omissions, always considering disabled entries first. */
+export async function getLorebookBudgetPlan(
+    char: Character,
+    selection: FieldSelection,
+    tokensToRemove: number,
+): Promise<LorebookBudgetPlan> {
+    const book = char.data?.character_book;
+    const selected = selection.character_book;
+    if (!book?.entries?.length || !Array.isArray(selected) || tokensToRemove <= 0) {
+        return {
+            selectedIndices: Array.isArray(selected) ? [...selected] : [],
+            omitted: [],
+            estimatedTokensRemoved: 0,
+        };
+    }
 
-    // Also escape other common macros that might cause issues
-    result = result.replace(/\{\{persona\}\}/gi, '{{pers\u200Bona}}');
-    result = result.replace(/\{\{original\}\}/gi, '{{orig\u200Binal}}');
+    const candidates = await Promise.all(selected.map(async index => {
+        const entry = book.entries[index];
+        if (!entry) return null;
+        const serialized = formatObjectField({ ...book, entries: [entry] }, 'character_book');
+        const counted = await getTokenCount(serialized);
+        return {
+            index,
+            label: entry.comment || `Entry ${entry.id}`,
+            enabled: entry.enabled,
+            estimatedTokens: counted ?? Math.ceil(serialized.length / 4),
+        };
+    }));
 
-    return result;
+    const ordered = candidates
+        .filter((item): item is LorebookOmission => item !== null)
+        .sort((left, right) => {
+            if (left.enabled !== right.enabled) return left.enabled ? 1 : -1;
+            return right.estimatedTokens - left.estimatedTokens;
+        });
+
+    const omitted: LorebookOmission[] = [];
+    let estimatedTokensRemoved = 0;
+    for (const candidate of ordered) {
+        if (estimatedTokensRemoved >= tokensToRemove) break;
+        omitted.push(candidate);
+        estimatedTokensRemoved += candidate.estimatedTokens;
+    }
+
+    const omittedIndices = new Set(omitted.map(item => item.index));
+    return {
+        selectedIndices: selected.filter(index => !omittedIndices.has(index)),
+        omitted,
+        estimatedTokensRemoved,
+    };
 }
 
 /**
@@ -302,6 +349,12 @@ export function buildCharacterSummaryFromSelection(
 
             if (selectedGreetings) {
                 sections.push(`### ${field.label}\n\n${selectedGreetings}`);
+            }
+        } else if (field.key === 'character_book' && Array.isArray(selected)) {
+            const book = field.rawValue as CharacterBook;
+            const selectedEntries = book.entries.filter((_, index) => selected.includes(index));
+            if (selectedEntries.length > 0) {
+                sections.push(`### ${field.label}\n\n${formatObjectField({ ...book, entries: selectedEntries }, field.key)}`);
             }
         } else {
             sections.push(`### ${field.label}\n\n${field.value}`);

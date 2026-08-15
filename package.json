@@ -8,7 +8,8 @@
     "build": "npm run sync-version && webpack --mode production",
     "release": "node scripts/release.js",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test": "node --test tests/*.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.23.0",

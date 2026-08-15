@@ -107,6 +107,38 @@ export interface PopulatedField {
     type: 'string' | 'array' | 'object';
 }
 
+export type CharacterFieldKey =
+    | 'description'
+    | 'personality'
+    | 'first_mes'
+    | 'scenario'
+    | 'mes_example'
+    | 'system_prompt'
+    | 'post_history_instructions'
+    | 'creator_notes'
+    | 'alternate_greetings'
+    | 'depth_prompt'
+    | 'character_book';
+
+export interface RewriteChange {
+    field: CharacterFieldKey;
+    index: number;
+    content: string;
+    rationale: string;
+}
+
+export interface RewritePayload {
+    changes: RewriteChange[];
+    summary: string;
+}
+
+export interface RewriteReviewEntry extends RewriteChange {
+    sourceIndex: number;
+    original: string;
+    unchanged: boolean;
+    writable: boolean;
+}
+
 // ============================================================================
 // GENERATION
 // ============================================================================
@@ -158,7 +190,13 @@ export interface ApiStatusInfo {
  * Result from a generation attempt
  */
 export type GenerationResult =
-    | { success: true; response: string; reasoning?: string; isStructured: boolean }
+    | {
+        success: true;
+        response: string;
+        reasoning?: string;
+        isStructured: boolean;
+        structuredFallbackReason?: string;
+    }
     | { success: false; error: string };
 
 // ============================================================================
@@ -264,7 +302,7 @@ export interface StageConfig {
 // ITERATION SYSTEM
 // ============================================================================
 
-export type IterationVerdict = 'accept' | 'needs_refinement' | 'regression';
+export type IterationVerdict = 'accept' | 'needs_refinement' | 'regression' | 'indeterminate';
 
 export interface IterationSnapshot {
     iteration: number;
@@ -284,6 +322,7 @@ export interface StageResult {
     response: string;
     reasoning?: string;  // NEW: reasoning/thinking content if available
     isStructured: boolean;
+    structuredFallbackReason?: string;
     promptUsed: string;
     schemaUsed: StructuredOutputSchema | null;
     timestamp: number;

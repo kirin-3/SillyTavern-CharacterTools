@@ -456,6 +456,7 @@ interface SillyTavernContext {
     // ===== CHARACTER OPERATIONS =====
     unshallowCharacter(characterId: number): Promise<void>;
     writeExtensionField(characterId: number, key: string, value: any): Promise<void>;
+    getCharacters?(): Promise<void>;
 
     // ===== PRESET MANAGER =====
     getPresetManager(apiId?: string): PresetManager | null;

@@ -48,4 +48,6 @@ css_reference.md
 generate_reference.md
 grab_api_files.sh
 ui_snapshot.sh
-
+.claude/
+.codex/
+openspec/

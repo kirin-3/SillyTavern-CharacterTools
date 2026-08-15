@@ -2,7 +2,10 @@
 //
 // Response formatting for display
 
-import type { StructuredOutputSchema, JsonSchemaValue } from '../types';
+import type { Character, FieldSelection, StructuredOutputSchema, JsonSchemaValue } from '../types';
+import { unescapeSTMacros } from '../core/macros';
+import { buildRewriteReview } from '../core/rewrite';
+import { parseStructuredResponse as parseProviderResponse } from '../core/response-parser';
 
 // ============================================================================
 // MAIN ENTRY POINTS
@@ -13,7 +16,7 @@ import type { StructuredOutputSchema, JsonSchemaValue } from '../types';
  */
 export function formatResponse(response: string, moduleName: string): string {
     const { showdown, DOMPurify } = SillyTavern.libs;
-    const text = typeof response === 'string' ? response : String(response ?? '');
+    const text = unescapeSTMacros(typeof response === 'string' ? response : String(response ?? ''));
 
     const converter = new showdown.Converter({
         tables: true,
@@ -61,20 +64,53 @@ export function formatStructuredResponse(
  * Parse a structured response (handles JSON and code blocks)
  */
 export function parseStructuredResponse(response: string): unknown | null {
-    try {
-        return JSON.parse(response);
-    } catch {
-        // Try to extract JSON from markdown code blocks
-        const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-            try {
-                return JSON.parse(codeBlockMatch[1].trim());
-            } catch {
-                return null;
-            }
-        }
-        return null;
-    }
+    const parsed = parseProviderResponse(unescapeSTMacros(response));
+    return parsed.status === 'unparseable' ? null : parsed.data;
+}
+
+export function formatRewriteResponse(
+    response: string,
+    character: Character,
+    selectedFields: FieldSelection,
+    moduleName: string,
+): string {
+    const review = buildRewriteReview(unescapeSTMacros(response), character, selectedFields);
+    if (review.error) return formatResponse(response, moduleName);
+
+    const entries = review.entries.map(entry => {
+        const state = entry.unchanged
+            ? 'Unchanged'
+            : entry.writable ? 'Proposed change' : 'Manual guidance';
+        const checkbox = entry.writable
+            ? `<input type="checkbox" class="${moduleName}_rewrite_select" data-change-index="${entry.sourceIndex}" ${entry.unchanged ? 'disabled' : 'checked'}>`
+            : '';
+
+        return `
+        <div class="${moduleName}_card ${entry.unchanged ? moduleName + '_rewrite_unchanged' : ''}">
+          <div class="${moduleName}_card_header">
+            ${checkbox}
+            <span class="${moduleName}_card_title">${escapeHtml(formatLabel(entry.field))}${entry.index >= 0 ? ` #${entry.index + 1}` : ''}</span>
+            <span class="${moduleName}_badge">${state}</span>
+          </div>
+          <div class="${moduleName}_field_label">Original</div>
+          <pre class="${moduleName}_rewrite_text">${escapeHtml(entry.original || '(empty)')}</pre>
+          <div class="${moduleName}_field_label">Proposal</div>
+          <pre class="${moduleName}_rewrite_text">${escapeHtml(entry.content || '(empty)')}</pre>
+          <div class="${moduleName}_field_label">Rationale</div>
+          <div class="${moduleName}_field_value">${escapeHtml(entry.rationale)}</div>
+        </div>`;
+    }).join('');
+
+    const html = `
+      <div class="${moduleName}_structured_content ${moduleName}_rewrite_review">
+        <div class="${moduleName}_field">
+          <div class="${moduleName}_field_label">Summary</div>
+          <div class="${moduleName}_field_value">${escapeHtml(review.summary)}</div>
+        </div>
+        <div class="${moduleName}_cards">${entries || `<div class="${moduleName}_empty">No valid field changes were returned.</div>`}</div>
+      </div>`;
+
+    return SillyTavern.libs.DOMPurify.sanitize(html);
 }
 
 // ============================================================================

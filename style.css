@@ -2755,6 +2755,39 @@
    ACCESSIBILITY
    ============================================================================ */
 
+.character_tools_rewrite_review .character_tools_card_header {
+  gap: 8px;
+}
+
+.character_tools_rewrite_text {
+  margin: 4px 0 10px;
+  padding: 10px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 55%, transparent);
+  border: 1px solid var(--SmartThemeBorderColor);
+  border-radius: var(--ct-radius-sm);
+}
+
+.character_tools_rewrite_unchanged {
+  opacity: 0.7;
+}
+
+.character_tools_verdict_notice {
+  flex: 1 1 100%;
+  padding: 8px 10px;
+  border-left: 3px solid var(--ct-warning);
+  background: color-mix(in srgb, var(--ct-warning) 8%, transparent);
+  font-size: var(--ct-font-small);
+}
+
+.character_tools_rewrite_copy_guidance pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .character_tools_popup *,
   .character_tools_settings_modal * {

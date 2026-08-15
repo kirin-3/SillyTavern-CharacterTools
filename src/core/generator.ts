@@ -19,6 +19,8 @@ import type {
 } from '../types';
 import type { TokenEstimate } from './tokens';
 import { buildStagePrompt, getStageSchema } from './pipeline';
+import { parseStructuredResponse } from './response-parser';
+import { unescapeSTMacros } from './macros';
 
 // ============================================================================
 // TYPES
@@ -535,13 +537,65 @@ export async function runStageGeneration(
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt },
             ],
-            { maxTokens, jsonSchema, signal },
+            {
+                maxTokens,
+                jsonSchema,
+                signal,
+                temperature: stage === 'rewrite' ? undefined : 0.2,
+            },
         );
     }
 
+    if (!result.success && jsonSchema && isSchemaRejectionError(result.error)) {
+        const structuredFallbackReason = result.error;
+        debugLog('info', 'Provider rejected schema; retrying once without structured output', {
+            stage,
+            reason: structuredFallbackReason,
+        });
+
+        if (settings.generationSettings.mode === 'current') {
+            result = await generateWithCurrent(
+                userPrompt,
+                systemPrompt,
+                { maxTokens, jsonSchema: null, signal },
+            );
+        } else {
+            const profileId = settings.generationSettings.profileId!;
+            result = await generateWithProfile(
+                profileId,
+                [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                {
+                    maxTokens,
+                    jsonSchema: null,
+                    signal,
+                    temperature: stage === 'rewrite' ? undefined : 0.2,
+                },
+            );
+        }
+
+        if (result.success) {
+            result = {
+                ...result,
+                isStructured: false,
+                structuredFallbackReason,
+            };
+        }
+    }
+
+    if (result.success) {
+        result = {
+            ...result,
+            response: unescapeSTMacros(result.response),
+            reasoning: result.reasoning ? unescapeSTMacros(result.reasoning) : undefined,
+        };
+    }
+
     // Validate structured response if needed
-    if (result.success && jsonSchema) {
-        return validateStructuredResponse(result.response, jsonSchema);
+    if (result.success && jsonSchema && !result.structuredFallbackReason) {
+        return validateStructuredResponse(result, jsonSchema);
     }
 
     return result;
@@ -555,6 +609,7 @@ interface GenerationOptions {
     maxTokens?: number;
     jsonSchema?: StructuredOutputSchema | null;
     signal?: AbortSignal;
+    temperature?: number;
 }
 
 /**
@@ -704,6 +759,10 @@ async function generateWithProfile(
             debugLog('info', 'Disabled reasoning_effort in payload for structured output', null);
         }
 
+        if (options.temperature !== undefined) {
+            overridePayload.temperature = options.temperature;
+        }
+
         const result = await CMRS.sendRequest(
             profileId,
             messages,
@@ -823,48 +882,48 @@ function handleGenerationError(err: unknown): GenerationResult {
  * Validate structured response and fall back gracefully if parsing fails
  */
 function validateStructuredResponse(
-    response: string,
+    generationResult: Extract<GenerationResult, { success: true }>,
     schema: StructuredOutputSchema,
 ): GenerationResult {
-    try {
-        const parsed = JSON.parse(response);
-
-        if (schema.value.required && Array.isArray(schema.value.required)) {
-            const missing = schema.value.required.filter(
-                field => !(field in parsed),
-            );
-
-            if (missing.length > 0) {
-                debugLog('info', 'Structured response missing required fields, returning as unstructured', {
-                    missing,
-                    schemaName: schema.name,
-                });
-                return {
-                    success: true,
-                    response,
-                    isStructured: false,
-                };
-            }
+    const { response } = generationResult;
+    const result = parseStructuredResponse(response, schema.value.required ?? []);
+    if (result.status !== 'unparseable') {
+        if (result.status === 'repaired') {
+            debugLog('info', 'Repaired structured response before validation', {
+                schemaName: schema.name,
+            });
         }
 
         return {
-            success: true,
-            response,
+            ...generationResult,
+            response: result.text,
             isStructured: true,
         };
-    } catch (e) {
-        debugLog('info', 'Failed to parse structured response, returning as unstructured', {
-            error: (e as Error).message,
-            schemaName: schema.name,
-            responsePreview: response.substring(0, 200),
-        });
-
-        return {
-            success: true,
-            response,
-            isStructured: false,
-        };
     }
+
+    debugLog('info', 'Failed to parse structured response, returning as unstructured', {
+        error: result.error,
+        missingKeys: result.missingKeys,
+        schemaName: schema.name,
+        responsePreview: response.substring(0, 200),
+    });
+
+    return {
+        ...generationResult,
+        isStructured: false,
+        structuredFallbackReason: result.error,
+    };
+}
+
+function isSchemaRejectionError(error: string): boolean {
+    const message = error.toLowerCase();
+    if (/\b(401|403|429)\b|auth|unauthor|rate.?limit|quota/.test(message)) {
+        return false;
+    }
+
+    const mentionsSchema = /json.?schema|response.?format|structured output|tool.?choice|schema/.test(message);
+    const indicatesRejection = /unsupported|not supported|invalid|reject|unknown|not allowed|cannot|can't/.test(message);
+    return mentionsSchema && indicatesRejection;
 }
 
 // ============================================================================

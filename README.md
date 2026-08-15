@@ -32,7 +32,11 @@ Not just "this card is a 7/10" — you get specific ratings and feedback for eac
 
 ### ✍️ Smart Rewrites
 
-The rewrite stage uses your score feedback to generate improvements. It knows what was weak and targets those areas while preserving what worked.
+The rewrite stage returns changes addressed to real card fields. Each proposal includes the original value, replacement, and rationale, so you can review and select individual changes instead of reconciling one large document.
+
+### ✅ Apply Back to the Card
+
+Select the proposed fields you want and click **Apply Selected Fields**. Character Tools verifies the original character identity, writes only those fields, and keeps a pre-write snapshot for one-step revert. Lorebook proposals remain manual guidance. If the SillyTavern write endpoint is unavailable, the same review degrades to per-field copy instructions.
 
 ### 🔍 Soul Check Analysis
 
@@ -69,7 +73,7 @@ Don't want to rewrite the whole card? Select only the fields you care about. Wor
 
 ### 📊 Structured Output Support
 
-Enable JSON schemas for consistent, parseable results. Built-in schemas for Score and Analyze stages, or create your own.
+Structured output is enabled by default for Score, Rewrite, and Analyze, with a built-in schema for every stage. Responses pass through reasoning-block removal, fence repair, balanced JSON extraction, and required-key validation. A provider that rejects schemas is retried once without the schema and the result is marked as an unstructured fallback.
 
 **Don't know JSON Schema?** No problem. Click **Generate** and describe what you want in plain English:
 
@@ -101,7 +105,7 @@ Save your prompts and schemas as presets. Includes sensible defaults, but you ca
 
 - **Text Completion APIs** — Might work, might not. We haven't tested it. If you try it and it works (or explodes), let us know.
 
-The extension uses SillyTavern's `generateRaw` function, which *should* work with text completion, but structured output and the prompt format may behave differently.
+The extension uses SillyTavern's `generateRaw` function for current-settings mode. Text completion, structured output, and prompt formatting can vary by backend.
 
 ---
 
@@ -145,7 +149,7 @@ Search for a character by name. The extension shows all populated fields with to
 
 ### 3. Choose Your Fields
 
-By default, all populated fields are selected. Uncheck any you want to skip. For alternate greetings, you can select specific ones.
+By default, all populated fields are selected. Uncheck any you want to skip. Alternate greetings and lorebook entries can be selected individually. When a full lorebook would exceed the model context, Character Tools shows the entries it recommends omitting, dropping disabled entries before enabled ones.
 
 ### 4. Configure the Pipeline
 
@@ -171,6 +175,8 @@ Results appear in the panel below. For each stage you can:
 - **Copy** — Copy to clipboard
 - **Regenerate** — Try again with the same settings
 - **Continue** — Move to the next stage
+- **Apply Selected Fields** — Write reviewed rewrite entries to the card
+- **Revert Last Apply** — Restore every field touched by the last write
 
 ![Results Panel Screenshot Placeholder]
 <!-- SCREENSHOT: Results panel showing formatted output with toolbar (lock, copy buttons) and footer actions -->
@@ -214,7 +220,7 @@ Click **Export** to download a markdown file with:
 
 **Input:** Original character + Score feedback (if available)
 
-**Output:** Complete rewritten character card
+**Output:** A structured list of per-field replacements with canonical field key, original index, content, rationale, and summary
 
 **When to use:** After scoring, or standalone if you just want a fresh take. The rewrite incorporates score feedback automatically when available.
 
@@ -263,8 +269,8 @@ Access settings via the ⚙️ icon in the popup header.
 
 ### Generation
 
-- **Use Current SillyTavern Settings** (recommended) — Uses your active API connection
-- **Custom Generation** — Override with specific source, model, temperature, etc.
+- **Use Current SillyTavern Settings** — Uses your active API connection. `generateRaw` does not expose a sampler override, so all stages inherit the active temperature.
+- **Connection Profile** — Uses a SillyTavern Connection Manager profile. Score and Analyze run at low temperature for repeatability; Rewrite inherits the profile sampler settings.
 
 ### System Prompt
 
@@ -336,7 +342,7 @@ Use **Validate** to check for errors, **Auto-Fix** to add missing `additionalPro
 
 ### For Best Results
 
-1. **Use a capable model** — Claude, GPT-4, or similar. Smaller models may struggle with nuanced analysis.
+1. **Choose a model that follows JSON instructions reliably** — The built-in rubrics and repair chain are designed to work with reasoning models such as GLM and DeepSeek as well as larger frontier models. Provider schema support still varies; unstructured fallback is shown in the result toolbar when used.
 
 2. **Don't skip Analyze** — It's tempting to just take the rewrite, but the soul check catches problems you won't notice until you're mid-roleplay.
 
@@ -360,7 +366,7 @@ JSON schemas force consistent output format. Good for:
 - Ensuring the AI doesn't skip sections
 - Getting machine-readable scores
 
-Not all models support structured output well. If results look wrong, try disabling it.
+Not all providers accept native schemas. Character Tools retries schema-rejection failures once without a schema and keeps the raw result copyable and exportable. You can still disable structured output per stage.
 
 ---
 
@@ -380,9 +386,9 @@ Not all models support structured output well. If results look wrong, try disabl
 
 ### Results look wrong or incomplete
 
-- Disable Structured Output if your model doesn't support it well
-- Try a more capable model
-- Check that your prompts aren't conflicting with the base instructions
+- Check whether the result toolbar reports an unstructured fallback
+- Inspect **Prompt Preview** to see the complete serialized card and schema instructions
+- Check that custom prompts do not conflict with the base field-craft rubric
 
 ### "No character selected" error
 
@@ -400,7 +406,7 @@ Not all models support structured output well. If results look wrong, try disabl
 
 - SillyTavern 1.12.0+
 - A connected LLM API (Chat Completion recommended — OpenRouter, OpenAI, Claude, etc.)
-- A model capable of following complex instructions (Claude Sonnet/Opus, GPT-4, etc. recommended)
+- A model that can follow the stage rubric and return JSON when structured output is enabled
 
 ---
 

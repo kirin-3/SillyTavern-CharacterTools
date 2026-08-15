@@ -5,7 +5,7 @@
 
 import { MODULE_NAME } from '../../../constants';
 import { getPopulatedFields, replaceCharMacroForDisplay } from '../../../core/character';
-import type { Character, PopulatedField, FieldSelection } from '../../../types';
+import type { Character, CharacterBook, PopulatedField, FieldSelection } from '../../../types';
 
 // ============================================================================
 // RENDER
@@ -100,9 +100,11 @@ function renderCharacterPreview(char: Character, selectedFields: FieldSelection)
  */
 function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection, charName: string): string {
     const isAltGreetings = field.key === 'alternate_greetings';
+    const isLorebook = field.key === 'character_book';
+    const isIndexed = isAltGreetings || isLorebook;
 
     let isSelected: boolean;
-    if (isAltGreetings) {
+    if (isIndexed) {
         const indices = selectedFields[field.key];
         isSelected = Array.isArray(indices) && indices.length > 0;
     } else {
@@ -120,7 +122,7 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection, c
           class="${MODULE_NAME}_field_checkbox"
           data-field="${field.key}"
           ${isSelected ? 'checked' : ''}
-          ${isAltGreetings ? 'data-is-array="true"' : ''}
+          ${isIndexed ? 'data-is-array="true"' : ''}
         >
         <button type="button" class="${MODULE_NAME}_field_expand_btn" data-field="${field.key}" title="Expand/collapse">
           <i class="fa-solid fa-chevron-right"></i>
@@ -131,8 +133,49 @@ function renderFieldRow(field: PopulatedField, selectedFields: FieldSelection, c
         <span class="${MODULE_NAME}_field_tokens" data-field="${field.key}">...</span>
       </div>
       <div class="${MODULE_NAME}_field_content hidden" id="${MODULE_NAME}_field_content_${field.key}">
-        ${isAltGreetings ? renderAltGreetingsContent(field, selectedFields, charName) : renderSimpleFieldContent(field, charName)}
+        ${isAltGreetings
+        ? renderAltGreetingsContent(field, selectedFields, charName)
+        : isLorebook
+            ? renderLorebookContent(field, selectedFields)
+            : renderSimpleFieldContent(field, charName)}
       </div>
+    </div>
+  `;
+}
+
+function renderLorebookContent(field: PopulatedField, selectedFields: FieldSelection): string {
+    const book = field.rawValue as CharacterBook;
+    const selectedIndices = (selectedFields[field.key] as number[]) || [];
+
+    return `
+    <div class="${MODULE_NAME}_alt_greetings">
+      ${book.entries.map((entry, index) => {
+        const entryId = `${MODULE_NAME}_lorebook_entry_${index}`;
+        const title = entry.comment || `Entry ${entry.id}`;
+        const keys = entry.keys.join(', ') || '(no keys)';
+        return `
+          <div class="${MODULE_NAME}_alt_greeting_item">
+            <div class="${MODULE_NAME}_alt_greeting_header">
+              <input
+                type="checkbox"
+                id="${entryId}"
+                class="${MODULE_NAME}_alt_greeting_checkbox"
+                data-field="${field.key}"
+                data-index="${index}"
+                ${selectedIndices.includes(index) ? 'checked' : ''}
+              >
+              <label class="${MODULE_NAME}_alt_greeting_label" for="${entryId}">
+                ${escapeHtml(title)} ${entry.enabled ? '' : '(disabled)'}
+              </label>
+              <span class="${MODULE_NAME}_alt_greeting_preview">${escapeHtml(keys)}</span>
+            </div>
+            <details class="${MODULE_NAME}_field_text">
+              <summary>Show complete content</summary>
+              <div>${escapeHtml(entry.content || '(empty)')}</div>
+            </details>
+          </div>
+        `;
+    }).join('')}
     </div>
   `;
 }

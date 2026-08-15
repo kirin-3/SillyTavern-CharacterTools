@@ -179,6 +179,7 @@ function initComponents(characters: Character[]): void {
             state.pipeline.results[state.activeStageView],
             state.pipeline.stageStatus[state.activeStageView],
             state.isGenerating,
+            state.pipeline,
         );
     }
 
@@ -608,6 +609,16 @@ function initResultsEvents(container: HTMLElement): void {
         // Copy
         if (target.closest(`#${MODULE_NAME}_copy_btn`)) {
             await actions.copyResultToClipboard();
+            return;
+        }
+
+        if (target.closest(`#${MODULE_NAME}_apply_rewrite_btn`)) {
+            await actions.applySelectedRewriteFields();
+            return;
+        }
+
+        if (target.closest(`#${MODULE_NAME}_revert_write_btn`)) {
+            await actions.revertAppliedRewrite();
             return;
         }
 

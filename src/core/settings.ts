@@ -131,6 +131,44 @@ const migrations: Record<number, MigrationFn> = {
             generationSettings: settings.generationSettings,
         });
     },
+
+    // v5 -> v6: Structured output defaults and rewritten builtin prompt bases
+    6: (settings) => {
+        const oldBaseSystemPrompt = `You are a character card analyst and writer. You help improve roleplay character cards by providing specific, actionable feedback and high-quality rewrites.
+
+Key principles:
+- Preserve the character's core identity and unique traits
+- Be specific - vague feedback is useless
+- Quality over quantity - concise and impactful
+- Maintain consistency across all fields`;
+        const oldBaseRefinementPrompt = `You are refining a character card based on analysis feedback. Your goal is to address identified issues while preserving what works.
+
+Key principles:
+- Fix specific problems from the analysis
+- Keep improvements from previous iterations
+- Maintain the character's essential identity
+- Don't reintroduce previously fixed issues`;
+
+        if (!settings.stageDefaults) {
+            settings.stageDefaults = structuredClone(DEFAULT_STAGE_DEFAULTS);
+        }
+
+        for (const stage of ['score', 'rewrite', 'analyze'] as const) {
+            const current = settings.stageDefaults[stage] ?? structuredClone(DEFAULT_STAGE_DEFAULTS[stage]);
+            current.useStructuredOutput = true;
+            settings.stageDefaults[stage] = current;
+        }
+        settings.stageDefaults.rewrite.schemaPresetId = 'builtin_schema_rewrite';
+
+        if (!settings.baseSystemPrompt || settings.baseSystemPrompt === oldBaseSystemPrompt) {
+            settings.baseSystemPrompt = BASE_SYSTEM_PROMPT;
+        }
+        if (!settings.baseRefinementPrompt || settings.baseRefinementPrompt === oldBaseRefinementPrompt) {
+            settings.baseRefinementPrompt = BASE_REFINEMENT_PROMPT;
+        }
+
+        debugLog('info', 'Enabled structured output defaults for all stages', null);
+    },
 };
 
 /**

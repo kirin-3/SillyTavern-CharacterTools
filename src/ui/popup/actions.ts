@@ -30,7 +30,14 @@ import { renderRefinementLoading } from './components/results-panel';
 import { renderIterationViewContent } from './components/iteration-history';
 
 // Core imports
-import { getPopulatedFields } from '../../core/character';
+import { getLorebookBudgetPlan, getPopulatedFields } from '../../core/character';
+import { unescapeSTMacros } from '../../core/macros';
+import { buildRewriteReview } from '../../core/rewrite';
+import {
+    applyRewriteChanges,
+    checkCharacterWriteCapability,
+    revertLastCharacterWrite,
+} from '../../core/character-write';
 import { getTokenCountsKeyed } from '../../core/tokens';
 import {
     setCharacter,
@@ -62,7 +69,7 @@ import {
     createPipelineState,
     initializeFieldSelection,
 } from '../../core/pipeline';
-import { isApiReady, runStageGeneration, getTokenCount } from '../../core/generator';
+import { isApiReady, runStageGeneration, getStageTokenCount, getTokenCount } from '../../core/generator';
 import {
     loadCharacterSessions,
     saveSession,
@@ -247,10 +254,16 @@ export function toggleField(fieldKey: string, isArray: boolean): void {
 
     if (isArray) {
         const field = getPopulatedFields(state.pipeline.character).find(f => f.key === fieldKey);
-        if (field && Array.isArray(field.rawValue)) {
+        if (field) {
             const current = state.pipeline.selectedFields[fieldKey];
             const isCurrentlySelected = Array.isArray(current) && current.length > 0;
-            const newValue = isCurrentlySelected ? [] : (field.rawValue as string[]).map((_, i) => i);
+            const itemCount = Array.isArray(field.rawValue)
+                ? field.rawValue.length
+                : field.rawValue && typeof field.rawValue === 'object' &&
+                    'entries' in field.rawValue && Array.isArray(field.rawValue.entries)
+                    ? field.rawValue.entries.length
+                    : 0;
+            const newValue = isCurrentlySelected ? [] : Array.from({ length: itemCount }, (_, i) => i);
             updatePipeline(p => updateFieldSelection(p, fieldKey, newValue));
         }
     } else {
@@ -512,6 +525,10 @@ export async function runSingleStage(stage: StageName): Promise<void> {
         toastr.info(canRun.reason);
     }
 
+    if (!await confirmLorebookBudget(stage)) {
+        return;
+    }
+
     updateState(() => ({ isGenerating: true }));
     abortController = new AbortController();
     updatePipeline(p => startStage(p, stage));
@@ -534,7 +551,9 @@ export async function runSingleStage(stage: StageName): Promise<void> {
         if (result.success) {
             updatePipeline(p => completeStage(p, stage, {
                 response: result.response,
+                reasoning: result.reasoning,
                 isStructured: result.isStructured,
+                structuredFallbackReason: result.structuredFallbackReason,
                 promptUsed,
                 schemaUsed,
             }));
@@ -557,6 +576,68 @@ export async function runSingleStage(stage: StageName): Promise<void> {
         abortController = null;
         setTimeout(() => updateAllComponents(), 0);
     }
+}
+
+async function confirmLorebookBudget(stage: StageName): Promise<boolean> {
+    const state = getState();
+    if (!state?.pipeline.character || !Array.isArray(state.pipeline.selectedFields.character_book)) {
+        return true;
+    }
+
+    const estimate = await getStageTokenCount(state.pipeline, stage);
+    if (!estimate) return true;
+
+    const availablePromptTokens = Math.max(0, estimate.contextSize - estimate.maxOutput);
+    const overflow = estimate.promptTokens - availablePromptTokens;
+    if (overflow <= 0) return true;
+
+    const plan = await getLorebookBudgetPlan(
+        state.pipeline.character,
+        state.pipeline.selectedFields,
+        overflow,
+    );
+
+    if (plan.omitted.length === 0 || plan.estimatedTokensRemoved < overflow) {
+        toastr.warning('The assembled prompt exceeds the model context. Select fewer fields before generating.');
+        return false;
+    }
+
+    const list = plan.omitted.map(item => {
+        const label = escapePopupText(item.label);
+        const stateLabel = item.enabled ? 'enabled' : 'disabled';
+        return `<li>${label} (${stateLabel}, ~${item.estimatedTokens.toLocaleString()} tokens)</li>`;
+    }).join('');
+
+    const { Popup } = SillyTavern.getContext();
+    const confirmed = await Popup.show.confirm(
+        'Lorebook exceeds context budget',
+        `The prompt is approximately ${overflow.toLocaleString()} tokens over budget. ` +
+        'Continue with these recommended omissions, or cancel and choose lorebook entries manually:' +
+        `<ul>${list}</ul>`,
+        { okButton: 'Use recommended selection', cancelButton: 'Choose manually' },
+    );
+
+    if (!confirmed) return false;
+
+    updatePipeline(pipeline => updateFieldSelection(
+        pipeline,
+        'character_book',
+        plan.selectedIndices,
+    ));
+    updateCharacterSelect();
+    updateTokenEstimate();
+    toastr.info(`Omitted ${plan.omitted.length} lorebook entr${plan.omitted.length === 1 ? 'y' : 'ies'} for this run.`);
+    return true;
+}
+
+function escapePopupText(value: string): string {
+    return value.replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        '\'': '&#39;',
+    })[character]!);
 }
 
 
@@ -801,9 +882,85 @@ export async function copyResultToClipboard(): Promise<void> {
 
     const result = state.pipeline.results[state.activeStageView];
     if (result) {
-        await navigator.clipboard.writeText(result.response);
+        await navigator.clipboard.writeText(unescapeSTMacros(result.response));
         toastr.success('Copied to clipboard');
     }
+}
+
+export async function applySelectedRewriteFields(): Promise<void> {
+    const state = getState();
+    const element = getElement();
+    const character = state?.pipeline.character;
+    const result = state?.pipeline.results.rewrite;
+    if (!state || !element || !character || !result) return;
+
+    const review = buildRewriteReview(result.response, character, state.pipeline.selectedFields);
+    if (review.error) {
+        toastr.error(`Apply unavailable: ${review.error}`);
+        return;
+    }
+
+    const checked = new Set([...element.querySelectorAll(`.${MODULE_NAME}_rewrite_select:checked`)]
+        .map(node => Number((node as HTMLInputElement).dataset.changeIndex)));
+    const selected = review.entries.filter(entry => checked.has(entry.sourceIndex) && entry.writable && !entry.unchanged);
+    if (selected.length === 0) {
+        toastr.warning('No changed fields are selected');
+        return;
+    }
+
+    if (!await checkCharacterWriteCapability()) {
+        await showPerFieldCopyGuidance(selected.map(entry => ({
+            label: `${entry.field}${entry.index >= 0 ? ` #${entry.index + 1}` : ''}`,
+            content: entry.content,
+        })));
+        return;
+    }
+
+    try {
+        await applyRewriteChanges(character, selected);
+        toastr.success(`Applied ${selected.length} field change${selected.length === 1 ? '' : 's'} to ${character.name}`);
+        updateResultsPanel();
+    } catch (error) {
+        toastr.error(error instanceof Error ? error.message : String(error));
+    }
+}
+
+export async function revertAppliedRewrite(): Promise<void> {
+    const state = getState();
+    const character = state?.pipeline.character;
+    if (!character) return;
+
+    try {
+        await revertLastCharacterWrite(character);
+        toastr.success('Restored every field from the pre-write snapshot');
+        updateResultsPanel();
+    } catch (error) {
+        toastr.error(error instanceof Error ? error.message : String(error));
+    }
+}
+
+async function showPerFieldCopyGuidance(
+    entries: Array<{ label: string; content: string }>,
+): Promise<void> {
+    const { Popup, POPUP_TYPE } = SillyTavern.getContext();
+    const html = `
+      <div class="${MODULE_NAME}_rewrite_copy_guidance">
+        <p>Automatic card updates are unavailable in this SillyTavern installation. Copy these proposals into the named fields:</p>
+        ${entries.map(entry => `
+          <div class="${MODULE_NAME}_card">
+            <div class="${MODULE_NAME}_card_title">${escapePopupText(entry.label)}</div>
+            <pre>${escapePopupText(unescapeSTMacros(entry.content))}</pre>
+          </div>
+        `).join('')}
+      </div>`;
+
+    await new Popup(html, POPUP_TYPE.TEXT, '', {
+        wide: true,
+        large: true,
+        allowVerticalScrolling: true,
+        okButton: 'Close',
+        cancelButton: false,
+    }).show();
 }
 
 export function continueToNextStage(): void {

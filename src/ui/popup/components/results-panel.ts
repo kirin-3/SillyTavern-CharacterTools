@@ -3,8 +3,10 @@
 // Results display and actions component
 
 import { MODULE_NAME, STAGE_LABELS } from '../../../constants';
-import { formatResponse, formatStructuredResponse } from '../../formatter';
+import { formatResponse, formatRewriteResponse, formatStructuredResponse } from '../../formatter';
 import { canExport, canRefine, extractVerdict } from '../../../core/pipeline';
+import { buildRewriteReview } from '../../../core/rewrite';
+import { canRevertLastCharacterWrite } from '../../../core/character-write';
 import type { StageName, StageStatus, StageResult, PipelineState, IterationVerdict } from '../../../types';
 
 // ============================================================================
@@ -19,6 +21,7 @@ export function renderResultsPanel(
     result: StageResult | null,
     status: StageStatus,
     isGenerating: boolean,
+    pipeline?: PipelineState,
 ): string {
     if (isGenerating && status === 'running') {
         return renderLoading(stage);
@@ -28,7 +31,7 @@ export function renderResultsPanel(
         return renderPlaceholder(stage, status);
     }
 
-    return renderResult(stage, result);
+    return renderResult(stage, result, pipeline);
 }
 
 function renderLoading(stage: StageName): string {
@@ -77,12 +80,17 @@ function renderPlaceholder(stage: StageName, status: StageStatus): string {
   `;
 }
 
-function renderResult(stage: StageName, result: StageResult): string {
-    const formattedContent = result.isStructured
-        ? formatStructuredResponse(result.response, null, MODULE_NAME)
-        : formatResponse(result.response, MODULE_NAME);
+function renderResult(stage: StageName, result: StageResult, pipeline?: PipelineState): string {
+    const formattedContent = stage === 'rewrite' && result.isStructured && pipeline?.character
+        ? formatRewriteResponse(result.response, pipeline.character, pipeline.selectedFields, MODULE_NAME)
+        : result.isStructured
+            ? formatStructuredResponse(result.response, result.schemaUsed, MODULE_NAME)
+            : formatResponse(result.response, MODULE_NAME);
 
     const timestamp = new Date(result.timestamp).toLocaleTimeString();
+    const fallbackBadge = result.structuredFallbackReason
+        ? `<span class="${MODULE_NAME}_badge" title="${escapeAttribute(result.structuredFallbackReason)}"><i class="fa-solid fa-triangle-exclamation"></i> Unstructured fallback</span>`
+        : '';
 
     // Extract verdict if this is an analyze result
     let verdictBadge = '';
@@ -98,6 +106,7 @@ function renderResult(stage: StageName, result: StageResult): string {
         <div class="${MODULE_NAME}_results_info">
           <span class="${MODULE_NAME}_badge">${STAGE_LABELS[stage]}</span>
           ${verdictBadge}
+          ${fallbackBadge}
           <span class="${MODULE_NAME}_results_time">${timestamp}</span>
           ${result.locked ? `<span class="${MODULE_NAME}_badge ${MODULE_NAME}_badge_locked"><i class="fa-solid fa-lock"></i> Locked</span>` : ''}
         </div>
@@ -132,12 +141,14 @@ function renderVerdictBadge(verdict: IterationVerdict): string {
         accept: 'fa-check-circle',
         needs_refinement: 'fa-wrench',
         regression: 'fa-arrow-down',
+        indeterminate: 'fa-circle-question',
     };
 
     const labels: Record<IterationVerdict, string> = {
         accept: 'Accept',
         needs_refinement: 'Needs Work',
         regression: 'Regression',
+        indeterminate: 'Needs Your Judgment',
     };
 
     return `
@@ -185,7 +196,7 @@ export function updateResultsPanelState(
         const newTimestamp = new Date(result.timestamp).toLocaleTimeString();
 
         if (!existingContent || existingTimestamp !== newTimestamp) {
-            container.innerHTML = renderResult(stage, result);
+            container.innerHTML = renderResult(stage, result, pipeline);
         }
     }
 
@@ -227,9 +238,41 @@ function renderFooterActions(
     `);
     }
 
+    if (stage === 'rewrite' && pipeline.character) {
+        const review = buildRewriteReview(result.response, pipeline.character, pipeline.selectedFields);
+        const selectable = review.entries.some(entry => entry.writable && !entry.unchanged);
+        if (result.isStructured && !review.error && selectable) {
+            actions.push(`
+      <button id="${MODULE_NAME}_apply_rewrite_btn" class="menu_button">
+        <i class="fa-solid fa-file-import"></i>
+        <span>Apply Selected Fields</span>
+      </button>
+    `);
+        } else if (!result.isStructured || review.error) {
+            actions.push(`<span class="${MODULE_NAME}_verdict_notice">Apply unavailable: rewrite output was not parsed. Copy and export remain available.</span>`);
+        }
+
+        if (canRevertLastCharacterWrite()) {
+            actions.push(`
+      <button id="${MODULE_NAME}_revert_write_btn" class="menu_button">
+        <i class="fa-solid fa-rotate-left"></i>
+        <span>Revert Last Apply</span>
+      </button>
+    `);
+        }
+    }
+
     if (stage === 'analyze') {
         const verdict = extractVerdict(result.response);
         const canRefineResult = canRefine(pipeline);
+
+        if (verdict === 'indeterminate') {
+            actions.push(`
+        <div class="${MODULE_NAME}_verdict_notice">
+          The analysis did not contain one clear verdict. Review the comparison and choose whether to refine or accept.
+        </div>
+      `);
+        }
 
         // Refine button (if we can refine)
         if (canRefineResult.canRun) {
@@ -276,4 +319,14 @@ function renderFooterActions(
     }
 
     return `<div class="${MODULE_NAME}_footer_actions">${actions.join('')}</div>`;
+}
+
+function escapeAttribute(value: string): string {
+    return value.replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        '\'': '&#39;',
+    })[character]!);
 }

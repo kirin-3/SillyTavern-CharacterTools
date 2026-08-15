@@ -1,5 +1,6 @@
 // src/schema.ts
 import type { StructuredOutputSchema, SchemaValidationResult, JsonSchemaValue } from '../types';
+import { parseStructuredResponse as parseProviderResponse } from './response-parser';
 
 // ============================================================================
 // PROVIDER LIMITS
@@ -103,11 +104,10 @@ export async function generateSchemaFromDescription(description: string): Promis
             systemPrompt: 'You are a JSON Schema expert. Output only valid JSON, nothing else.',
         });
 
-        // Clean up response - strip markdown code blocks if present
-        let cleaned = response.trim();
-        if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-        }
+        const parsedResponse = parseProviderResponse(response);
+        const cleaned = parsedResponse.status === 'unparseable'
+            ? response.trim()
+            : parsedResponse.text;
 
         // Validate what we got
         const validation = validateSchema(cleaned);
@@ -779,38 +779,11 @@ export function parseStructuredResponse(
     response: string,
     schema?: StructuredOutputSchema,
 ): { data: unknown; warnings: string[] } | null {
-    let parsed: unknown;
+    const requiredKeys = schema?.value.required ?? [];
+    const result = parseProviderResponse(response, requiredKeys);
+    if (result.status === 'unparseable') return null;
 
-    try {
-        parsed = JSON.parse(response);
-    } catch {
-        // Try to extract JSON from markdown code blocks
-        const codeBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-            try {
-                parsed = JSON.parse(codeBlockMatch[1].trim());
-            } catch {
-                return null;
-            }
-        } else {
-            return null;
-        }
-    }
-
-    const warnings: string[] = [];
-
-    // If schema provided, validate required fields
-    if (schema && schema.value.required && Array.isArray(schema.value.required)) {
-        const missing = schema.value.required.filter(
-            field => !(field in (parsed as Record<string, unknown>)),
-        );
-
-        if (missing.length > 0) {
-            warnings.push(`Missing required fields: ${missing.join(', ')}`);
-        }
-    }
-
-    return { data: parsed, warnings };
+    return { data: result.data, warnings: [] };
 }
 
 /**

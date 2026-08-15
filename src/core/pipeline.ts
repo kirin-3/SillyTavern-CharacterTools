@@ -20,6 +20,8 @@ import { createStageConfigFromDefaults, resolvePrompt, resolveSchema, processPro
 import { getFullRefinementInstructions } from './settings';
 import { debugLog, logError } from '../debug';
 import { getPopulatedFields, buildCharacterSummaryFromSelection } from './character';
+import { extractVerdictFromResponse } from './response-parser';
+import { unescapeSTMacros } from './macros';
 
 // ============================================================================
 // PIPELINE STATE FACTORY
@@ -93,8 +95,11 @@ export function initializeFieldSelection(char: Character): FieldSelection {
 
     for (const field of populated) {
         if (field.key === 'alternate_greetings' && Array.isArray(field.rawValue)) {
-            // Select all greetings by default
             selection[field.key] = (field.rawValue as string[]).map((_, i) => i);
+        } else if (field.key === 'character_book' &&
+            field.rawValue && typeof field.rawValue === 'object' &&
+            'entries' in field.rawValue && Array.isArray(field.rawValue.entries)) {
+            selection[field.key] = field.rawValue.entries.map((_, i) => i);
         } else {
             selection[field.key] = true;
         }
@@ -506,32 +511,7 @@ export function clearStageResult(state: PipelineState, stage: StageName): Pipeli
  * Extract verdict from analysis response
  */
 export function extractVerdict(analysisResponse: string): IterationVerdict {
-    const upper = analysisResponse.toUpperCase();
-
-    if (upper.includes('VERDICT') || upper.includes('"VERDICT"')) {
-        if (upper.includes('ACCEPT') && !upper.includes('NEEDS')) {
-            return 'accept';
-        }
-        if (upper.includes('REGRESSION')) {
-            return 'regression';
-        }
-        if (upper.includes('NEEDS_REFINEMENT') || upper.includes('NEEDS REFINEMENT')) {
-            return 'needs_refinement';
-        }
-    }
-
-    if (upper.includes('READY TO USE') || upper.includes('NO MORE ITERATIONS')) {
-        return 'accept';
-    }
-    if (upper.includes('WORSE THAN') || upper.includes('STEP BACKWARD') || upper.includes('LOST MORE')) {
-        return 'regression';
-    }
-
-    if (upper.includes('ISSUE') || upper.includes('PROBLEM') || upper.includes('SHOULD FIX')) {
-        return 'needs_refinement';
-    }
-
-    return 'needs_refinement';
+    return extractVerdictFromResponse(analysisResponse);
 }
 
 /**
@@ -806,6 +786,16 @@ export function buildStagePrompt(state: PipelineState, stage: StageName): string
     }
     parts.push(processedUserPrompt);
 
+    const schema = !isRefinement && state.configs[stage].useStructuredOutput
+        ? getStageSchema(state, stage)
+        : null;
+    if (schema) {
+        const requiredKeys = schema.value.required?.join(', ') || '(none)';
+        parts.push('\n\n# Required Structured Output\n\n');
+        parts.push(`Return one JSON object matching this schema. Required root keys: ${requiredKeys}.\n\n`);
+        parts.push(`\`\`\`json\n${JSON.stringify(schema.value, null, 2)}\n\`\`\``);
+    }
+
     return parts.join('');
 }
 
@@ -861,7 +851,7 @@ export function generateExportData(state: PipelineState): string | null {
         exportLines.push('');
         exportLines.push('## Score Results');
         exportLines.push('');
-        exportLines.push(state.results.score.response);
+        exportLines.push(unescapeSTMacros(state.results.score.response));
         exportLines.push('');
     }
 
@@ -870,7 +860,7 @@ export function generateExportData(state: PipelineState): string | null {
         exportLines.push('');
         exportLines.push('## Rewrite Results');
         exportLines.push('');
-        exportLines.push(state.results.rewrite.response);
+        exportLines.push(unescapeSTMacros(state.results.rewrite.response));
         exportLines.push('');
     }
 
@@ -879,7 +869,7 @@ export function generateExportData(state: PipelineState): string | null {
         exportLines.push('');
         exportLines.push('## Analysis Results');
         exportLines.push('');
-        exportLines.push(state.results.analyze.response);
+        exportLines.push(unescapeSTMacros(state.results.analyze.response));
         exportLines.push('');
     }
 
@@ -896,11 +886,11 @@ export function generateExportData(state: PipelineState): string | null {
             exportLines.push('');
             exportLines.push('#### Rewrite');
             exportLines.push('');
-            exportLines.push(snap.rewriteResponse);
+            exportLines.push(unescapeSTMacros(snap.rewriteResponse));
             exportLines.push('');
             exportLines.push('#### Analysis');
             exportLines.push('');
-            exportLines.push(snap.analysisResponse);
+            exportLines.push(unescapeSTMacros(snap.analysisResponse));
             exportLines.push('');
         }
     }

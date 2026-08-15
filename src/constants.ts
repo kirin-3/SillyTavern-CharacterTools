@@ -16,9 +16,9 @@ import type {
 
 export const MODULE_NAME = 'character_tools';
 export const EXTENSION_PATH = 'third-party/SillyTavern-CharacterTools';
-export const SETTINGS_VERSION = 5;  // CHANGED: Bumped for generationSettings migration
+export const SETTINGS_VERSION = 6;
 export const VERSION = '1.3.0';     // CHANGED: Version bump for refactor
-export const CURRENT_PRESET_VERSION = 2;
+export const CURRENT_PRESET_VERSION = 3;
 
 // ============================================================================
 // CHARACTER FIELDS
@@ -66,13 +66,24 @@ export const STAGE_DESCRIPTIONS: Record<StageName, string> = {
 // BASE SYSTEM PROMPT
 // ============================================================================
 
-export const BASE_SYSTEM_PROMPT = `You are a character card analyst and writer. You help improve roleplay character cards by providing specific, actionable feedback and high-quality rewrites.
+export const BASE_SYSTEM_PROMPT = `You are an expert in TavernCard and SillyTavern character-card construction. Base every judgment on observable evidence in the supplied fields.
 
-Key principles:
-- Preserve the character's core identity and unique traits
-- Be specific - vague feedback is useless
-- Quality over quantity - concise and impactful
-- Maintain consistency across all fields`;
+Field semantics:
+- description stores stable identity, appearance, background, capabilities, and other facts the model needs throughout a chat.
+- personality stores behavioral tendencies and decision patterns; repeating description facts here adds cost without adding guidance.
+- scenario establishes the current situation, roles, and immediate context; it should contribute information distinct from description.
+- first_mes demonstrates the opening situation and character behavior while leaving the user something concrete to respond to.
+- mes_example demonstrates interaction patterns. Check that speaker labels, placeholders, and the card's chosen example-block separator convention are internally consistent and parseable.
+- system_prompt and post_history_instructions are high-priority behavioral instructions. Description, personality, scenario, and these instruction fields are commonly resident in context on every turn, so repeated or low-information text has recurring token cost.
+- alternate_greetings are indexed openings. Keep each proposal tied to its original index.
+- depth_prompt is inserted at a configured depth and should contain instructions suited to that position.
+- character_book entries are conditional context. Evaluate their keys, enabled state, internal consistency, and complete content.
+
+Craft checks:
+- Identify contradictions, exact or semantic duplication across fields, unresolved placeholders, malformed macros, malformed example blocks, and token use disproportionate to information.
+- Distinguish deliberate reinforcement from redundant repetition.
+- Treat prose and structured attribute formats as equivalent choices. Judge clarity, consistency, and utility within the format used rather than converting formats by preference.
+- Preserve specific facts and behavioral constraints that make the character distinct. Do not invent defects or praise not supported by the card.`;
 
 export const DEFAULT_USER_SYSTEM_PROMPT = '';
 
@@ -80,13 +91,7 @@ export const DEFAULT_USER_SYSTEM_PROMPT = '';
 // BASE REFINEMENT PROMPT
 // ============================================================================
 
-export const BASE_REFINEMENT_PROMPT = `You are refining a character card based on analysis feedback. Your goal is to address identified issues while preserving what works.
-
-Key principles:
-- Fix specific problems from the analysis
-- Keep improvements from previous iterations
-- Maintain the character's essential identity
-- Don't reintroduce previously fixed issues`;
+export const BASE_REFINEMENT_PROMPT = 'Refine the current field-addressable rewrite using the structured analysis. Read verdict, preserved, lost, gained, issuesToAddress, and recommendations as evidence. Fix each supported issue, restore any lost card fact or behavior, retain supported improvements, and avoid changing fields that do not require a correction. Return proposed entries only for selected fields, retaining the canonical field key and original index.';
 
 export const DEFAULT_USER_REFINEMENT_PROMPT = '';
 
@@ -109,19 +114,17 @@ export const BUILTIN_PROMPT_PRESETS: readonly PromptPreset[] = Object.freeze([
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Rate this character card on a scale of 1-10 for each field provided. For each field:
+        prompt: `Score every supplied field using this anchored rubric:
+- 1-3: missing, unusable, contradictory, or so underspecified that it gives little reliable guidance.
+- 4-6: functional but has material gaps, duplication, ambiguity, malformed conventions, or recurring token cost with limited information.
+- 7-8: clear and useful with only localized defects; it fulfills the field's role and is mostly consistent with the rest of the card.
+- 9-10: precise, internally consistent, token-efficient, and unusually effective at its field role; no material defect is evident.
 
-1. **Score** (1-10)
-2. **Strengths** - What works well
-3. **Weaknesses** - What needs improvement
-4. **Specific Suggestions** - Concrete changes
+For each field, give a score plus at least one exact quote or line reference from that field as evidence. Name strengths, weaknesses, and actionable suggestions. Check description/personality duplication, whether scenario adds a distinct situation, whether first_mes provides a response affordance, whether mes_example labels and separators are consistent, and the recurring cost of always-resident text. Compute an evidence-based overall score and rank the highest-impact improvements.
 
-After scoring all fields, provide:
-- **Overall Score** (weighted average)
-- **Top 3 Priority Improvements**
-- **Summary**
-
-Be critical but constructive. Specific, actionable feedback.`,
+Worked example using fictional placeholder character Aster Vale:
+Input excerpt: description says "Aster is a patient archivist"; personality repeats "patient archivist" and adds nothing else.
+Output excerpt: {"field":"personality","score":4,"evidence":"\\"patient archivist\\" repeats description verbatim","strengths":"Consistent with description","weaknesses":"Adds no behavioral guidance","suggestions":"Replace repetition with observable decision patterns"}.`,
     },
     {
         id: 'builtin_score_quick',
@@ -131,14 +134,9 @@ Be critical but constructive. Specific, actionable feedback.`,
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Give a quick assessment:
+        prompt: `Give a compact assessment using the same anchors: 1-3 unusable or severely deficient; 4-6 functional with material defects; 7-8 effective with localized defects; 9-10 precise, consistent, and token-efficient with no material defect. Cite short exact evidence for each finding. Report the overall score, up to three supported strengths, up to three highest-impact weaknesses, and a one-sentence summary.
 
-1. Overall score (1-10)
-2. Three biggest strengths
-3. Three areas needing work
-4. One-sentence summary
-
-Keep it concise but useful.`,
+Worked example for fictional placeholder character Aster Vale: "Scenario repeats the description's archive job without establishing a present situation" supports a score of 5 and the suggestion to add the immediate problem the opening begins with.`,
     },
     {
         id: 'builtin_rewrite_default',
@@ -148,16 +146,10 @@ Keep it concise but useful.`,
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Rewrite this character card to address the weaknesses identified while preserving its strengths.
+        prompt: `Propose field-addressable replacements for the selected fields. Use the score evidence to correct supported contradictions, duplication, ambiguity, malformed placeholders or example blocks, missing field function, and disproportionate token cost. Preserve facts, behavioral constraints, and effective material that do not need correction. Emit no entry for an unselected field. Use index -1 for ordinary fields and the original zero-based index for alternate_greetings.
 
-Guidelines:
-- Maintain the character's core personality and unique traits
-- Improve weak areas identified in the feedback
-- Keep similar length unless brevity/expansion was noted
-- Preserve distinctive voice or style that works
-- Fix contradictions and fill gaps
-
-Output the complete rewritten character with all fields.`,
+Worked example using fictional placeholder character Aster Vale:
+{"changes":[{"field":"personality","index":-1,"content":"Aster verifies claims against the archive before acting and becomes terse when records conflict.","rationale":"Replaces duplicated occupation text with observable behavior."}],"summary":"Removed cross-field duplication while retaining the archivist premise."}`,
     },
     {
         id: 'builtin_rewrite_conservative',
@@ -167,16 +159,7 @@ Output the complete rewritten character with all fields.`,
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Make minimal, surgical improvements. Only change what's clearly broken or weak.
-
-Rules:
-- Change as little as possible
-- Preserve the author's voice completely
-- Only fix obvious issues (contradictions, grammar, clarity)
-- Do NOT add new content unless filling a critical gap
-- Do NOT change style or tone
-
-Output only the fields you changed, with [ORIGINAL] and [REVISED] versions for comparison.`,
+        prompt: 'Propose only changes justified by a concrete defect in the score evidence. Retain all unaffected content and the card\'s existing format choices. Correct contradictions, broken placeholders, malformed examples, ambiguity, and redundant token use with the smallest sufficient replacement. Return field-addressable entries only for changed selected fields, using index -1 except for original alternate_greetings indices.',
     },
     {
         id: 'builtin_rewrite_expansive',
@@ -186,16 +169,7 @@ Output only the fields you changed, with [ORIGINAL] and [REVISED] versions for c
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Significantly expand and enhance this character card. Add depth, detail, and richness.
-
-Goals:
-- Flesh out underdeveloped areas
-- Add sensory details and specific examples
-- Deepen personality with quirks, contradictions, history
-- Improve example messages with more variety
-- Make the character feel more three-dimensional
-
-Don't change the core concept, but make it shine. Output the complete expanded character card.`,
+        prompt: 'Address every material gap identified by the score evidence. Add information only when a selected field cannot fulfill its defined role without it; otherwise retain the current information density and format. Resolve contradictions, duplication, malformed conventions, and missing response affordances. Return field-addressable entries only for changed selected fields, using index -1 except for original alternate_greetings indices.',
     },
     {
         id: 'builtin_analyze_default',
@@ -205,25 +179,16 @@ Don't change the core concept, but make it shine. Output the complete expanded c
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Compare the original character card with the rewritten version.
+        prompt: `Compare the original fields with the proposed field-addressable rewrite using concrete facts and constraints from both.
 
-## What Was Preserved
-Core traits, distinctive elements, voice consistency
+Choose exactly one verdict:
+- ACCEPT: the proposal resolves the targeted material defects, preserves required facts and behavior, and introduces no material contradiction or loss.
+- NEEDS_REFINEMENT: the proposal is not a net regression but leaves a specific correctable defect, omission, duplication, or unsupported change.
+- REGRESSION: the proposal removes or contradicts defining information, worsens field function, introduces a new material defect, or is less usable than the original.
 
-## What Was Lost
-Diminished personality aspects, missing quirks, tone shifts
+List what was preserved, lost, and gained; assign an evidence-based soulPreservationScore; explain the assessment; and give concrete issuesToAddress and recommendations.
 
-## What Was Gained
-New depth, improvements, better clarity
-
-## Soul Check
-Does the rewrite still feel like the same character? Rate 1-10.
-
-## Verdict
-State clearly: **ACCEPT** (ready to use), **NEEDS_REFINEMENT** (has issues), or **REGRESSION** (worse than before)
-
-## Issues to Address
-If NEEDS_REFINEMENT, list specific problems for next iteration.`,
+Worked example using fictional placeholder character Aster Vale: if the proposal removes the fact that Aster verifies claims before acting, return {"verdict":"REGRESSION","lost":["Verification-before-action behavior"],"issuesToAddress":["Restore the removed decision rule"]}.`,
     },
     {
         id: 'builtin_analyze_iteration',
@@ -233,29 +198,9 @@ If NEEDS_REFINEMENT, list specific problems for next iteration.`,
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Compare the current rewrite against the original.
+        prompt: `Compare the current rewrite with the original and the prior structured analysis. Identify which cited issues were resolved and which remain.
 
-## Progress Check
-- What issues from previous analysis were addressed?
-- What new issues (if any) were introduced?
-- Is this version better, worse, or lateral move?
-
-## Current State
-- Preserved from Original
-- Still Missing or Lost
-- Successfully Improved
-- New Problems
-
-## Soul Preservation Score (1-10)
-
-## Verdict
-**ACCEPT** - Ready, no more iterations needed
-**NEEDS_REFINEMENT** - Progress, but issues remain
-**REGRESSION** - Made things worse
-
-## Next Steps
-If NEEDS_REFINEMENT: What to fix next.
-If REGRESSION: What went wrong.`,
+Use ACCEPT only when every material cited issue is resolved without material loss; NEEDS_REFINEMENT when a specific correctable issue remains without net regression; REGRESSION when defining information or field function is worse than before. Return concrete preserved, lost, gained, issuesToAddress, recommendations, and an evidence-based soulPreservationScore.`,
     },
     {
         id: 'builtin_analyze_quick',
@@ -265,12 +210,9 @@ If REGRESSION: What went wrong.`,
         presetVersion: CURRENT_PRESET_VERSION,
         createdAt: 0,
         updatedAt: 0,
-        prompt: `Quick comparison:
+        prompt: `Make a compact evidence-based comparison. ACCEPT means all targeted material defects are resolved with no material loss. NEEDS_REFINEMENT means a named correctable defect remains without net regression. REGRESSION means defining information or field function became worse. Cite the best supported improvement, the most important loss or remaining issue, and return exactly one verdict.
 
-1. Soul preserved? (Yes/Partially/No)
-2. Best improvement made
-3. Biggest thing lost (if any)
-4. Verdict: ACCEPT / NEEDS_REFINEMENT / REGRESSION`,
+Worked example for fictional placeholder character Aster Vale: removing a duplicated occupation while adding a concrete decision rule and preserving all facts supports ACCEPT; deleting the decision rule supports REGRESSION.`,
     },
     {
         id: 'builtin_freeform',
@@ -304,11 +246,12 @@ const SCORE_SCHEMA: StructuredOutputSchema = {
                     properties: {
                         field: { type: 'string' },
                         score: { type: 'number' },
+                        evidence: { type: 'string' },
                         strengths: { type: 'string' },
                         weaknesses: { type: 'string' },
                         suggestions: { type: 'string' },
                     },
-                    required: ['field', 'score', 'strengths', 'weaknesses', 'suggestions'],
+                    required: ['field', 'score', 'evidence', 'strengths', 'weaknesses', 'suggestions'],
                 },
             },
             overallScore: { type: 'number' },
@@ -319,6 +262,37 @@ const SCORE_SCHEMA: StructuredOutputSchema = {
             summary: { type: 'string' },
         },
         required: ['fieldScores', 'overallScore', 'priorityImprovements', 'summary'],
+    },
+};
+
+const REWRITE_SCHEMA: StructuredOutputSchema = {
+    name: 'CharacterRewrite',
+    strict: true,
+    value: {
+        $schema: 'http://json-schema.org/draft-04/schema#',
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            changes: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        field: {
+                            type: 'string',
+                            enum: CHARACTER_FIELDS.map(field => field.key),
+                        },
+                        index: { type: 'number' },
+                        content: { type: 'string' },
+                        rationale: { type: 'string' },
+                    },
+                    required: ['field', 'index', 'content', 'rationale'],
+                },
+            },
+            summary: { type: 'string' },
+        },
+        required: ['changes', 'summary'],
     },
 };
 
@@ -406,6 +380,16 @@ export const BUILTIN_SCHEMA_PRESETS: readonly SchemaPreset[] = Object.freeze([
         schema: QUICK_SCORE_SCHEMA,
     },
     {
+        id: 'builtin_schema_rewrite',
+        name: 'Default Rewrite',
+        stages: ['rewrite'],
+        isBuiltin: true,
+        presetVersion: CURRENT_PRESET_VERSION,
+        createdAt: 0,
+        updatedAt: 0,
+        schema: REWRITE_SCHEMA,
+    },
+    {
         id: 'builtin_schema_analyze',
         name: 'Default Analyze',
         stages: ['analyze'],
@@ -437,21 +421,21 @@ export const DEFAULT_STAGE_DEFAULTS: Record<StageName, StageDefaults> = {
         customPrompt: '',
         schemaPresetId: 'builtin_schema_score',
         customSchema: '',
-        useStructuredOutput: false,
+        useStructuredOutput: true,
     },
     rewrite: {
         promptPresetId: 'builtin_rewrite_default',
         customPrompt: '',
-        schemaPresetId: null,
+        schemaPresetId: 'builtin_schema_rewrite',
         customSchema: '',
-        useStructuredOutput: false,
+        useStructuredOutput: true,
     },
     analyze: {
         promptPresetId: 'builtin_analyze_default',
         customPrompt: '',
         schemaPresetId: 'builtin_schema_analyze',
         customSchema: '',
-        useStructuredOutput: false,
+        useStructuredOutput: true,
     },
 };
 

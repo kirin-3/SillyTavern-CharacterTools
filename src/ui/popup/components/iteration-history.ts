@@ -94,6 +94,7 @@ function getVerdictIcon(verdict: IterationVerdict): string {
         case 'accept': return 'fa-check-circle';
         case 'needs_refinement': return 'fa-wrench';
         case 'regression': return 'fa-arrow-down';
+        case 'indeterminate': return 'fa-question-circle';
         default: return 'fa-question-circle';
     }
 }
@@ -107,6 +108,7 @@ function formatVerdict(verdict: IterationVerdict): string {
         case 'accept': return 'Accepted';
         case 'needs_refinement': return 'Needs Work';
         case 'regression': return 'Regression';
+        case 'indeterminate': return 'Needs Judgment';
         default: return 'Unknown';
     }
 }
